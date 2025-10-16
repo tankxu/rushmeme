@@ -23,7 +23,8 @@ export default function LangToggle() {
           key={lang.key}
           value={lang.key}
           variant="outline"
-          size="lg"
+          size="default"
+          className="border-border bg-muted text-muted-foreground dark:bg-muted/30 data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:border-border dark:data-[state=on]:bg-muted border transition-colors duration-150"
         >
           {`${lang.prefix}`}
         </ToggleGroupItem>

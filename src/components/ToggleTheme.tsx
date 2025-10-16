@@ -5,7 +5,7 @@ import { toggleTheme } from "@/helpers/theme_helpers";
 
 export default function ToggleTheme() {
   return (
-    <Button onClick={toggleTheme} size="icon">
+    <Button onClick={toggleTheme} size="icon" variant="outline">
       <Moon size={16} />
     </Button>
   );

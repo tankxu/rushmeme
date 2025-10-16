@@ -1,6 +1,5 @@
 import React from "react";
 import DragWindowRegion from "@/components/DragWindowRegion";
-import NavigationMenu from "@/components/template/NavigationMenu";
 
 export default function BaseLayout({
   children,
@@ -8,10 +7,9 @@ export default function BaseLayout({
   children: React.ReactNode;
 }) {
   return (
-    <>
-      <DragWindowRegion title="electron-shadcn" />
-      <NavigationMenu />
-      <main className="h-screen p-2 pb-20">{children}</main>
-    </>
+    <div className="flex h-screen flex-col bg-muted">
+      <DragWindowRegion title="RushMeme" />
+      <main className="flex-1 overflow-hidden">{children}</main>
+    </div>
   );
 }
