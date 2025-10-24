@@ -7,7 +7,7 @@ export default function BaseLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-muted dark:bg-primary-foreground flex h-screen flex-col">
+    <div className="flex h-screen flex-col bg-background">
       <DragWindowRegion title="RushMeme" />
       <main className="flex-1 overflow-hidden">{children}</main>
     </div>

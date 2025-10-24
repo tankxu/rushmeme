@@ -185,7 +185,7 @@
     @apply overflow-hidden;
   }
   .draglayer {
-    @apply bg-muted border-b border-border/60 h-10 flex items-center;
+    @apply bg-transparent h-10 flex items-center;
     -webkit-app-region: drag;
   }
   button {

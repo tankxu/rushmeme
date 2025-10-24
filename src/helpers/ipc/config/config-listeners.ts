@@ -17,6 +17,17 @@ type ShortcutRegistry = {
   platformId: string;
 };
 
+type ShortcutState = {
+  active: boolean;
+  releaseTimer?: NodeJS.Timeout;
+  lastInvocationTs?: number;
+};
+
+const shortcutStates = new Map<string, ShortcutState>();
+const SHORTCUT_RELEASE_BUFFER_MS = 120;
+const SHORTCUT_MIN_RELEASE_DELAY_MS = 350;
+const SHORTCUT_DEFAULT_RELEASE_DELAY_MS = 1100;
+
 let shortcutSuspendCount = 0;
 let lastConfig: AppConfig | null = null;
 
@@ -39,6 +50,58 @@ function buildShortcutRegistry(config: AppConfig): ShortcutRegistry[] {
 
 function unregisterAll() {
   globalShortcut.unregisterAll();
+  shortcutStates.forEach((state) => {
+    if (state.releaseTimer) {
+      clearTimeout(state.releaseTimer);
+    }
+  });
+  shortcutStates.clear();
+}
+
+function createSingleFireCallback(
+  accelerator: string,
+  handler: () => Promise<void> | void,
+) {
+  return async () => {
+    let state = shortcutStates.get(accelerator);
+    if (!state) {
+      state = { active: false };
+      shortcutStates.set(accelerator, state);
+    }
+
+    const now = Date.now();
+    const previousInvocationTs = state.lastInvocationTs;
+    state.lastInvocationTs = now;
+
+    const releaseDelay =
+      previousInvocationTs != null
+        ? Math.max(
+            now - previousInvocationTs + SHORTCUT_RELEASE_BUFFER_MS,
+            SHORTCUT_MIN_RELEASE_DELAY_MS,
+          )
+        : SHORTCUT_DEFAULT_RELEASE_DELAY_MS;
+
+    if (!state.active) {
+      state.active = true;
+      try {
+        await handler();
+      } catch (error) {
+        console.error(
+          `[rushmeme] global shortcut handler for ${accelerator} failed:`,
+          error,
+        );
+      }
+    }
+
+    if (state.releaseTimer) {
+      clearTimeout(state.releaseTimer);
+    }
+    state.releaseTimer = setTimeout(() => {
+      state.active = false;
+      state.releaseTimer = undefined;
+      state.lastInvocationTs = undefined;
+    }, releaseDelay);
+  };
 }
 
 function registerPlatformShortcuts(config: AppConfig) {
@@ -58,36 +121,34 @@ function registerPlatformShortcuts(config: AppConfig) {
 
   for (const entry of registry) {
     try {
-      globalShortcut.register(entry.accelerator, async () => {
-        const currentConfig = getConfig();
-        const platform = currentConfig.platforms.find(
-          (item) => item.id === entry.platformId,
+      const registered = globalShortcut.register(
+        entry.accelerator,
+        createSingleFireCallback(entry.accelerator, async () => {
+          const currentConfig = getConfig();
+          const platform = currentConfig.platforms.find(
+            (item) => item.id === entry.platformId,
+          );
+          if (!platform || !platform.enabled) {
+            return;
+          }
+          const platformOnlyConfig: AppConfig = {
+            ...currentConfig,
+            platforms: [platform],
+          };
+          await executePlatforms(platformOnlyConfig);
+        }),
+      );
+      if (!registered) {
+        console.warn(
+          `[rushmeme] Failed to register shortcut ${entry.accelerator} (already in use)`,
         );
-        if (!platform || !platform.enabled) {
-          return;
-        }
-        const platformOnlyConfig: AppConfig = {
-          ...currentConfig,
-          platforms: [platform],
-        };
-        await executePlatforms(platformOnlyConfig);
-      });
+      }
     } catch (error) {
       console.error(
         `Failed to register shortcut ${entry.accelerator} for platform ${entry.platformId}:`,
         error,
       );
     }
-  }
-
-  const masterShortcut = "CommandOrControl+Shift+C";
-  try {
-    globalShortcut.register(masterShortcut, async () => {
-      const currentConfig = getConfig();
-      await executePlatforms(currentConfig);
-    });
-  } catch (error) {
-    console.error(`Failed to register master shortcut ${masterShortcut}:`, error);
   }
 }
 
@@ -120,6 +181,7 @@ export function addConfigEventListeners(_mainWindow: BrowserWindow) {
   ipcMain.on(CONFIG_SHORTCUTS_ENABLE_CHANNEL, (event) => {
     shortcutSuspendCount = Math.max(shortcutSuspendCount - 1, 0);
     if (shortcutSuspendCount === 0 && lastConfig) {
+      unregisterAll();
       registerPlatformShortcuts(lastConfig);
     }
     event.returnValue = true;

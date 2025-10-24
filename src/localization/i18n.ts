@@ -41,14 +41,13 @@ i18n.use(initReactI18next).init({
             "Control how quickly browser tabs fire and when notifications keep the desk in sync.",
           browserDelayTitle: "Browser launch delay",
           browserDelayDescription:
-            "Define a delay before opening browser tabs to group requests. Pro users unlock instant launches.",
+            "Define a delay before opening browser tabs; free users wait for the countdown, while Pro users launch instantly.",
           browserDelayValue: "{{value}} ms delay",
           delayBadge: "Instant for Pro",
           notificationsTitle: "Notifications",
           notificationsDescription:
             "Decide when RushMeme should display OS notifications after an execution attempt.",
-          notificationsSuccess: "Success notifications",
-          notificationsError: "Error notifications",
+          notificationsToggleLabel: "Show notifications",
           statusTitle: "Autosave status",
           status: {
             saving: "Saving changes…",
@@ -70,11 +69,17 @@ i18n.use(initReactI18next).init({
             name: "Platform name",
             tokenType: "Token type",
             shortcut: "Shortcut",
+            tokenUrlsTitle: "Token URLs",
             urlTemplates: "URL templates by chain",
             toggle: "Enable platform",
             urlHint: "Use {CA} where the contract address should appear.",
             cancel: "Cancel",
             save: "Save changes",
+          },
+          upgradeDialog: {
+            title: "Upgrade to launch more platforms",
+            description:
+              "Free plan opens one platform at a time. Go Pro to launch multiple destinations instantly.",
           },
         },
         pro: {
@@ -88,6 +93,7 @@ i18n.use(initReactI18next).init({
           featuresTitle: "Everything in Pro",
           featuresList: [
             "Zero-delay browser launches",
+            "Launch unlimited platforms at once",
             "Unlimited platform templates & custom fields",
             "Clipboard validation with advanced heuristics",
             "Priority support within 24 hours",
@@ -144,14 +150,13 @@ i18n.use(initReactI18next).init({
             "设定标签页的启动延时，并决定 RushMeme 何时提醒团队。",
           browserDelayTitle: "浏览器启动延时",
           browserDelayDescription:
-            "为批量打开的浏览器标签设置延时。升级 Pro 后即可立刻打开，无需等待。",
+            "为打开浏览器标签设置延时。免费用户需等待计时完成，升级 Pro 后即可立刻打开。",
           browserDelayValue: "当前延时 {{value}} 毫秒",
-          delayBadge: "Pro 可立即打开",
+          delayBadge: "升级 Pro 可享0延时启动",
           notificationsTitle: "通知提醒",
           notificationsDescription:
             "选择在执行成功或失败时是否展示系统通知。",
-          notificationsSuccess: "成功通知",
-          notificationsError: "失败通知",
+          notificationsToggleLabel: "开启系统通知",
           statusTitle: "自动保存状态",
           status: {
             saving: "正在保存修改…",
@@ -173,11 +178,17 @@ i18n.use(initReactI18next).init({
             name: "平台名称",
             tokenType: "代币类型",
             shortcut: "快捷键",
+            tokenUrlsTitle: "代币 URL",
             urlTemplates: "不同链路的 URL 模板",
             toggle: "启用该平台",
             urlHint: "请在需要填入合约地址的位置使用 {CA}。",
             cancel: "取消",
             save: "保存修改",
+          },
+          upgradeDialog: {
+            title: "升级 Pro 解锁多平台同时打开",
+            description:
+              "免费版一次只能打开一个平台。升级 Pro 后即可同时启动多个平台并享受零延时。",
           },
         },
         pro: {
@@ -190,6 +201,7 @@ i18n.use(initReactI18next).init({
           featuresTitle: "Pro 版本包含",
           featuresList: [
             "零延时浏览器启动体验",
+            "支持同时开启不限数量的平台",
             "无限平台模板与自定义字段",
             "高级剪贴板校验与格式识别",
             "24 小时内优先客服响应",

@@ -5,6 +5,7 @@ import type {
   AppConfig,
   ExecutePlatformsRequest,
   ExecutePlatformsResponse,
+  RuntimeConfig,
 } from "@/types/config";
 
 export {};
@@ -32,7 +33,7 @@ declare global {
   }
 
   interface RushConfigContext {
-    getConfig: () => Promise<AppConfig>;
+    getConfig: () => Promise<RuntimeConfig>;
     saveConfig: (config: AppConfig) => Promise<void>;
     executePlatforms: (
       payload?: ExecutePlatformsRequest,

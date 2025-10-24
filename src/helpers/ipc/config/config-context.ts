@@ -9,13 +9,15 @@ import type {
   AppConfig,
   ExecutePlatformsRequest,
   ExecutePlatformsResponse,
+  RuntimeConfig,
 } from "@/types/config";
 
 export function exposeConfigContext() {
   const { contextBridge, ipcRenderer } = window.require("electron");
 
   contextBridge.exposeInMainWorld("rushConfig", {
-    getConfig: () => ipcRenderer.invoke(CONFIG_GET_CHANNEL) as Promise<AppConfig>,
+    getConfig: () =>
+      ipcRenderer.invoke(CONFIG_GET_CHANNEL) as Promise<RuntimeConfig>,
     saveConfig: (config: AppConfig) =>
       ipcRenderer.invoke(CONFIG_SAVE_CHANNEL, config) as Promise<void>,
     executePlatforms: (payload?: ExecutePlatformsRequest) =>

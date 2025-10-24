@@ -1,6 +1,7 @@
 import { PLATFORM_TEMPLATES, DEFAULT_BROWSER_DELAY } from "./platform-templates";
 import type { AppConfig, PlatformConfig } from "@/types/config";
 import { convertDisplayShortcutToAccelerator } from "@/utils/shortcut";
+import { extractChainSpecFromUrl, normalizeUrlTemplates } from "@/utils/chain";
 
 function instantiatePlatformTemplate(
   templateKey: string,
@@ -11,22 +12,37 @@ function instantiatePlatformTemplate(
     throw new Error(`Unknown platform template: ${templateKey}`);
   }
 
+  const normalizedUrls = normalizeUrlTemplates(
+    template.urls,
+    template.tokenType,
+  );
+
   return {
     ...template,
     id: index === 0 ? template.key : `${template.key}-${index}`,
     accelerator: convertDisplayShortcutToAccelerator(template.shortcut),
-    urls: template.urls.map((entry) => ({ ...entry })),
+    urls: normalizedUrls.map((entry) => ({
+      ...entry,
+      chain: extractChainSpecFromUrl(
+        entry.url,
+        entry.chain ?? template.tokenType,
+      ),
+    })),
   };
 }
 
-export function instantiateDefaultPlatforms(): PlatformConfig[] {
-  return PLATFORM_TEMPLATES.map((template, index) =>
+export function instantiateDefaultPlatforms(includeCatalogOnly = false): PlatformConfig[] {
+  const templates = includeCatalogOnly
+    ? PLATFORM_TEMPLATES
+    : PLATFORM_TEMPLATES.filter((template) => !template.catalogOnly);
+
+  return templates.map((template, index) =>
     instantiatePlatformTemplate(template.key, index),
   );
 }
 
 export function createDefaultAppConfig(): AppConfig {
-  const platforms = instantiateDefaultPlatforms().map((platform, index) => ({
+  const platforms = instantiateDefaultPlatforms(false).map((platform, index) => ({
     ...platform,
     enabled: index === 0 ? true : platform.enabled,
   }));
@@ -34,8 +50,7 @@ export function createDefaultAppConfig(): AppConfig {
   return {
     platforms,
     notifications: {
-      success: true,
-      error: true,
+      enabled: true,
     },
     browserDelayMs: DEFAULT_BROWSER_DELAY,
   };

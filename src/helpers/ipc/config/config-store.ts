@@ -1,9 +1,15 @@
 import Store from "electron-store";
-import type { AppConfig, PlatformConfig } from "@/types/config";
+import type {
+  AppConfig,
+  PlatformConfig,
+  PlatformTemplate,
+  RuntimeConfig,
+} from "@/types/config";
 import { createDefaultAppConfig, instantiateDefaultPlatforms } from "@/config/default-config";
-import { PLATFORM_TEMPLATES } from "@/config/platform-templates";
-import type { PlatformTemplate } from "@/types/config";
+import { PLATFORM_TEMPLATES, DEFAULT_BROWSER_DELAY } from "@/config/platform-templates";
 import { convertDisplayShortcutToAccelerator } from "@/utils/shortcut";
+import { extractChainSpecFromUrl, normalizeUrlTemplates } from "@/utils/chain";
+import { isProLicensed } from "@/helpers/ipc/license/pro-status";
 
 const store = new Store<AppConfig>({
   name: "rushmeme-config",
@@ -22,30 +28,106 @@ function ensurePlatformId(platform: PlatformConfig, index: number): PlatformConf
   };
 }
 
-function ensurePlatformDefaults(platform: PlatformConfig, template?: PlatformTemplate) {
-  const resolvedShortcut =
-    platform.shortcut ?? template?.shortcut ?? "";
+function ensurePlatformDefaults(
+  platform: PlatformConfig,
+  template?: PlatformTemplate,
+) {
+  const resolvedShortcut = platform.shortcut ?? template?.shortcut ?? "";
   const accelerator =
     platform.accelerator ?? convertDisplayShortcutToAccelerator(resolvedShortcut);
+  const sourceUrls = platform.urls?.length ? platform.urls : template?.urls ?? [];
+  const fallbackChain = platform.tokenType ?? template?.tokenType ?? "";
+  const urls = normalizeUrlTemplates(sourceUrls, fallbackChain).map((entry) => ({
+    ...entry,
+    chain: extractChainSpecFromUrl(entry.url, entry.chain ?? fallbackChain),
+  }));
 
   return {
     ...platform,
     requiresPro: platform.requiresPro ?? template?.requiresPro,
+    tokenType: platform.tokenType ?? template?.tokenType ?? "",
     shortcut: resolvedShortcut,
     accelerator,
-    urls: platform.urls?.map((entry) => ({ ...entry })) ??
-      template?.urls.map((entry) => ({ ...entry })) ??
-      [],
+    urls,
   };
+}
+
+function sanitizeBrowserDelay(candidate: unknown, fallback: number): number {
+  if (typeof candidate !== "number" || !Number.isFinite(candidate)) {
+    return fallback;
+  }
+
+  const normalized = Math.max(0, Math.round(candidate));
+  return normalized;
+}
+
+function enforceSingleActivePlatform(
+  platforms: PlatformConfig[],
+  proLicensed: boolean,
+): PlatformConfig[] {
+  if (proLicensed) {
+    return platforms.map((platform) => ({ ...platform }));
+  }
+
+  let hasActivated = false;
+  return platforms.map((platform) => {
+    if (!platform.enabled) {
+      return {
+        ...platform,
+        enabled: false,
+      };
+    }
+
+    if (!hasActivated) {
+      hasActivated = true;
+      return {
+        ...platform,
+        enabled: true,
+      };
+    }
+
+    return {
+      ...platform,
+      enabled: false,
+    };
+  });
+}
+
+function normalizeNotifications(
+  rawValue: unknown,
+  fallback: { enabled: boolean },
+): { enabled: boolean } {
+  if (
+    rawValue &&
+    typeof rawValue === "object" &&
+    "enabled" in rawValue &&
+    typeof (rawValue as { enabled: unknown }).enabled === "boolean"
+  ) {
+    return { enabled: (rawValue as { enabled: boolean }).enabled };
+  }
+
+  if (
+    rawValue &&
+    typeof rawValue === "object" &&
+    ("success" in rawValue || "error" in rawValue)
+  ) {
+    const legacy = rawValue as { success?: unknown; error?: unknown };
+    const success = typeof legacy.success === "boolean" ? legacy.success : true;
+    const error = typeof legacy.error === "boolean" ? legacy.error : true;
+    return { enabled: success || error };
+  }
+
+  return fallback;
 }
 
 function normalizeConfig(config: AppConfig): AppConfig {
   const defaults = createDefaultAppConfig();
+  const proLicensed = isProLicensed();
   const templatesByKey = new Map(
     PLATFORM_TEMPLATES.map((template) => [template.key, template]),
   );
 
-  const platforms = config.platforms?.length
+  const platformsList = config.platforms?.length
     ? config.platforms
         .map((platform, index) => ensurePlatformId(platform, index))
         .map((platform) =>
@@ -53,16 +135,33 @@ function normalizeConfig(config: AppConfig): AppConfig {
         )
     : instantiateDefaultPlatforms();
 
+  const platforms = enforceSingleActivePlatform(platformsList, proLicensed);
+
+  const browserDelayMs = proLicensed
+    ? sanitizeBrowserDelay(config.browserDelayMs ?? defaults.browserDelayMs, defaults.browserDelayMs)
+    : DEFAULT_BROWSER_DELAY;
+
+  const notifications = normalizeNotifications(
+    (config as unknown as { notifications?: unknown }).notifications,
+    defaults.notifications,
+  );
+
   return {
-    browserDelayMs: config.browserDelayMs ?? defaults.browserDelayMs,
-    notifications: config.notifications ?? defaults.notifications,
+    browserDelayMs,
+    notifications,
     platforms,
   };
 }
 
-export function getConfig(): AppConfig {
-  const config = store.store;
-  return normalizeConfig(config);
+export function getConfig(): RuntimeConfig {
+  const storedConfig = store.store;
+  const normalized = normalizeConfig(storedConfig);
+  store.set(normalized);
+
+  return {
+    ...normalized,
+    isPro: isProLicensed(),
+  };
 }
 
 export function saveConfig(config: AppConfig) {

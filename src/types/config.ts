@@ -9,7 +9,7 @@ export type PlatformTemplate = {
   tokenType: string;
   shortcut: string;
   enabled: boolean;
-  requiresPro?: boolean;
+  catalogOnly?: boolean;
   urls: PlatformUrlTemplate[];
 };
 
@@ -19,14 +19,17 @@ export type PlatformConfig = PlatformTemplate & {
 };
 
 export type NotificationConfig = {
-  success: boolean;
-  error: boolean;
+  enabled: boolean;
 };
 
 export type AppConfig = {
   platforms: PlatformConfig[];
   notifications: NotificationConfig;
   browserDelayMs: number;
+};
+
+export type RuntimeConfig = AppConfig & {
+  isPro: boolean;
 };
 
 export type ExecutePlatformsRequest = {
