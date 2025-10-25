@@ -1,8 +1,16 @@
-# electron-shadcn
+# RushMeme
 
-Electron in all its glory. Everything you will need to develop your beautiful desktop application.
+RushMeme 是一款面向加密资产投研人群的跨平台桌面工具。应用通过全局快捷键捕获当前选中的合约地址，并在一组可自定义的平台中瞬间打开对应页面；窗口关闭后常驻托盘/菜单栏，随时待命。
 
-![Demo GIF](https://github.com/LuanRoger/electron-shadcn/blob/main/images/demo.gif)
+![RushMeme Demo](images/demo.gif)
+
+## 核心特性 ✨
+
+- **一键多平台联动**：复制合约地址后触发快捷键，即可按配置同时在 Binance、OKX、DexScreener 等站点打开详情页。
+- **丰富的托盘体验**：窗口关闭后驻扎系统托盘/菜单栏，托盘菜单展示启用平台并支持一键执行或快速退出。
+- **多语言与持久化**：内置中英文，语言偏好与平台配置自动保存；跨系统重启仍保持状态。
+- **可配置的模板体系**：内置常用平台模板并支持自定义 URL、链路与快捷键，满足不同投研流程。
+- **兼容 macOS / Windows**：针对不同系统提供菜单栏图标、任务栏行为和托盘体验，保持一致的快捷操作。
 
 ## Libs and tools
 

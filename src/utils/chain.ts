@@ -5,7 +5,9 @@ const BASE58_ALPHABET =
 
 export type AddressType = "evm" | "solana" | "unknown";
 
-const BASE58_CHAR_SET = new Set(BASE58_ALPHABET.split(""));
+const BASE58_DIGIT_MAP = new Map(
+  BASE58_ALPHABET.split("").map((char, index) => [char, index] as const),
+);
 
 function normalizeSpec(spec: string): string {
   return spec
@@ -216,16 +218,51 @@ function looksLikeEvmAddress(value: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(value);
 }
 
+function decodeBase58(value: string): Uint8Array | null {
+  if (!value) {
+    return new Uint8Array(0);
+  }
+
+  let accumulator = 0n;
+  for (const char of value) {
+    const digit = BASE58_DIGIT_MAP.get(char);
+    if (digit === undefined) {
+      return null;
+    }
+    accumulator = accumulator * 58n + BigInt(digit);
+  }
+
+  const bytes: number[] = [];
+  while (accumulator > 0n) {
+    bytes.push(Number(accumulator % 256n));
+    accumulator /= 256n;
+  }
+
+  let leadingZeros = 0;
+  for (const char of value) {
+    if (char === "1") {
+      leadingZeros += 1;
+    } else {
+      break;
+    }
+  }
+
+  const decoded = new Uint8Array(leadingZeros + bytes.length);
+  const totalLength = decoded.length;
+  for (let index = 0; index < bytes.length; index += 1) {
+    decoded[totalLength - 1 - index] = bytes[index];
+  }
+
+  return decoded;
+}
+
 function looksLikeSolanaAddress(value: string): boolean {
   if (value.length < 32 || value.length > 44) {
     return false;
   }
-  for (const char of value) {
-    if (!BASE58_CHAR_SET.has(char)) {
-      return false;
-    }
-  }
-  return true;
+
+  const decoded = decodeBase58(value);
+  return decoded !== null && decoded.length === 32;
 }
 
 export function detectAddressType(address: string): AddressType {
@@ -239,4 +276,56 @@ export function detectAddressType(address: string): AddressType {
   }
 
   return "unknown";
+}
+
+export type DetectedAddress = {
+  address: string;
+  type: AddressType;
+};
+
+export function extractAddressesFromText(text: string): DetectedAddress[] {
+  if (!text) {
+    return [];
+  }
+
+  type Candidate = DetectedAddress & { index: number };
+  const candidates: Candidate[] = [];
+  const seen = new Set<string>();
+
+  const registerCandidate = (address: string, type: AddressType, index: number) => {
+    const key = type === "solana" ? address : address.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      candidates.push({ address, type, index });
+    }
+  };
+
+  {
+    const evmRegex = /0x[0-9a-fA-F]{40}/g;
+    let match: RegExpExecArray | null;
+    // eslint-disable-next-line no-cond-assign
+    while ((match = evmRegex.exec(text)) !== null) {
+      const candidateAddress = match[0];
+      registerCandidate(candidateAddress, "evm", match.index);
+    }
+  }
+
+  {
+    const base58Class = "1-9A-HJ-NP-Za-km-z";
+    const solanaRegex = new RegExp(
+      `(?<![${base58Class}])([${base58Class}]{32,44})(?![${base58Class}])`,
+      "g",
+    );
+    let match: RegExpExecArray | null;
+    // eslint-disable-next-line no-cond-assign
+    while ((match = solanaRegex.exec(text)) !== null) {
+      const candidateAddress = match[1];
+      if (looksLikeSolanaAddress(candidateAddress)) {
+        registerCandidate(candidateAddress, "solana", match.index);
+      }
+    }
+  }
+
+  candidates.sort((a, b) => a.index - b.index);
+  return candidates.map(({ address, type }) => ({ address, type }));
 }

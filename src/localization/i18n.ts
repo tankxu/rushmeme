@@ -26,7 +26,7 @@ i18n.use(initReactI18next).init({
         home: {
           heading: "RushMeme",
           subtitle:
-            "RushMeme centralizes your contract-address workflow so you copy once and fan out across every trading desk instantly.",
+            "Select any contract address and open your trading platform instantly. Stay one step ahead, strike first.",
           platformListTitle: "Platform shortcuts",
           platformListDescription:
             "Enable and organize the destinations RushMeme launches after it captures a contract address.",
@@ -136,7 +136,7 @@ i18n.use(initReactI18next).init({
         home: {
           heading: "RushMeme",
           subtitle:
-            "RushMeme 帮你把合约地址的复制、筛选和多平台联动整合为一条链路，一次复制即可同步所有研究平台。",
+            "一键选中合约地址，瞬间打开交易平台，让你快人一步，抢先出击。",
           platformListTitle: "平台快捷方式",
           platformListDescription:
             "配置 RushMeme 捕获合约地址后要打开的平台，并调整它们的呈现方式。",

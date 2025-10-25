@@ -31,6 +31,10 @@ const SHORTCUT_DEFAULT_RELEASE_DELAY_MS = 1100;
 let shortcutSuspendCount = 0;
 let lastConfig: AppConfig | null = null;
 
+type ConfigListenerOptions = {
+  onConfigUpdated?: (config: AppConfig) => void;
+};
+
 function buildShortcutRegistry(config: AppConfig): ShortcutRegistry[] {
   return config.platforms
     .map((platform) => {
@@ -152,7 +156,10 @@ function registerPlatformShortcuts(config: AppConfig) {
   }
 }
 
-export function addConfigEventListeners(_mainWindow: BrowserWindow) {
+export function addConfigEventListeners(
+  _mainWindow: BrowserWindow,
+  options?: ConfigListenerOptions,
+) {
   ipcMain.handle(CONFIG_GET_CHANNEL, () => {
     const config = getConfig();
     return config;
@@ -161,6 +168,7 @@ export function addConfigEventListeners(_mainWindow: BrowserWindow) {
   ipcMain.handle(CONFIG_SAVE_CHANNEL, (_event, rawConfig: AppConfig) => {
     const saved = saveConfig(rawConfig);
     registerPlatformShortcuts(saved);
+    options?.onConfigUpdated?.(saved);
     return;
   });
 
@@ -191,6 +199,7 @@ export function addConfigEventListeners(_mainWindow: BrowserWindow) {
     const config = getConfig();
     lastConfig = config;
     registerPlatformShortcuts(config);
+    options?.onConfigUpdated?.(config);
   });
 
   app.on("will-quit", () => {

@@ -12,7 +12,7 @@ export default function App() {
 
   useEffect(() => {
     syncThemeWithLocal();
-    updateAppLanguage(i18n);
+    void updateAppLanguage(i18n);
   }, [i18n]);
 
   return <RouterProvider router={router} />;

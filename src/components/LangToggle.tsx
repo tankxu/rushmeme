@@ -9,7 +9,11 @@ export default function LangToggle() {
   const currentLang = i18n.language;
 
   function onValueChange(value: string) {
-    setAppLanguage(value, i18n);
+    if (!value) {
+      return;
+    }
+
+    void setAppLanguage(value, i18n);
   }
 
   return (

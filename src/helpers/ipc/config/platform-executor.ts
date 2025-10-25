@@ -10,21 +10,45 @@ import type {
 } from "@/types/config";
 import {
   chainSupportsAddressType,
-  detectAddressType,
   resolveUrlForAddress,
   parseChainSpec,
   normalizeChainTokenKey,
+  extractAddressesFromText,
   type AddressType,
 } from "@/utils/chain";
 
 const execFileAsync = promisify(execFile);
 
-function showNotification(options: { title: string; body: string }) {
+type NotificationVariant = "info" | "success" | "error" | "warning";
+
+type ShowNotificationOptions = {
+  title: string;
+  body: string;
+  variant?: NotificationVariant;
+  titleEmoji?: string;
+};
+
+const DEFAULT_TITLE_EMOJI: Record<NotificationVariant, string | undefined> = {
+  info: "ℹ️",
+  success: "✅",
+  error: "❌",
+  warning: "⚠️",
+};
+
+function showNotification(options: ShowNotificationOptions) {
   if (!Notification.isSupported()) {
     return;
   }
 
-  new Notification(options).show();
+  const variant = options.variant ?? "info";
+  const emoji = options.titleEmoji ?? DEFAULT_TITLE_EMOJI[variant];
+  const decoratedTitle =
+    emoji && !options.title.startsWith(emoji) ? `${emoji} ${options.title}` : options.title;
+
+  new Notification({
+    title: decoratedTitle,
+    body: options.body,
+  }).show();
 }
 
 async function simulateCopyShortcut() {
@@ -201,7 +225,7 @@ export async function executePlatforms(
 
   console.log("[rushmeme] execute action", new Date().toISOString());
 
-  let address = request?.overrideAddress?.trim();
+  let rawInput = request?.overrideAddress?.trim();
   let selectionCaptured = false;
   let originalClipboardValue: string | null = null;
   const restoreClipboardIfNeeded = () => {
@@ -210,7 +234,7 @@ export async function executePlatforms(
     }
   };
 
-  if (!address) {
+  if (!rawInput) {
     const captureResult = await captureSelectedText();
     if (!captureResult.captured || !captureResult.text) {
       if (captureResult.original) {
@@ -220,6 +244,7 @@ export async function executePlatforms(
         showNotification({
           title: "RushMeme",
           body: "Failed to capture a selection. Highlight a contract address and try again.",
+          variant: "error",
         });
       }
       return {
@@ -230,12 +255,12 @@ export async function executePlatforms(
       };
     }
 
-    address = captureResult.text;
+    rawInput = captureResult.text;
     selectionCaptured = true;
     originalClipboardValue = captureResult.original;
   }
 
-  if (!address) {
+  if (!rawInput) {
     restoreClipboardIfNeeded();
     return {
       success: false,
@@ -246,12 +271,34 @@ export async function executePlatforms(
   }
 
   const enabledPlatforms = config.platforms.filter((item) => item.enabled);
-  const addressType = detectAddressType(address);
+  const detectedAddresses = extractAddressesFromText(rawInput);
+
+  if (detectedAddresses.length === 0) {
+    restoreClipboardIfNeeded();
+    if (config.notifications.enabled) {
+      showNotification({
+        title: "RushMeme",
+        body: "Selected text does not contain a supported contract address.",
+        variant: "warning",
+        titleEmoji: "🔍",
+      });
+    }
+    return {
+      success: false,
+      opened,
+      error: "Selected text does not contain a supported contract address.",
+      selectionCaptured,
+    };
+  }
+
   const urlsToOpen = enabledPlatforms.flatMap((platform) =>
-    buildPlatformUrls(platform, address, addressType).map((url) => ({
-      url,
-      platform,
-    })),
+    detectedAddresses.flatMap(({ address, type }) =>
+      buildPlatformUrls(platform, address, type).map((url) => ({
+        url,
+        platform,
+        address,
+      })),
+    ),
   );
 
   if (urlsToOpen.length === 0) {
@@ -259,26 +306,32 @@ export async function executePlatforms(
       showNotification({
         title: "RushMeme",
         body: "No enabled platforms were available for the captured address.",
+        variant: "error",
       });
     }
     restoreClipboardIfNeeded();
     return {
       success: false,
       opened,
-      address,
+      address: detectedAddresses[0]?.address,
       error: "No enabled platforms available to open.",
       selectionCaptured,
     };
   }
 
   if (config.notifications.enabled) {
+    const addressSummary =
+      detectedAddresses.length === 1
+        ? detectedAddresses[0].address
+        : `${detectedAddresses.length} addresses`;
     const delayMessage =
       config.browserDelayMs > 0
-        ? `Opening ${urlsToOpen.length} destination(s) for ${address} in ${Math.round(config.browserDelayMs / 100) / 10}s.`
-        : `Opening ${urlsToOpen.length} destination(s) for ${address}.`;
+        ? `Opening ${urlsToOpen.length} destination(s) for ${addressSummary} in ${Math.round(config.browserDelayMs / 100) / 10}s.`
+        : `Opening ${urlsToOpen.length} destination(s) for ${addressSummary}.`;
     showNotification({
       title: "RushMeme",
       body: delayMessage,
+      variant: "success",
     });
   }
 
@@ -298,7 +351,7 @@ export async function executePlatforms(
   return {
     success: opened.length > 0,
     opened,
-    address,
+    address: detectedAddresses[0]?.address,
     selectionCaptured,
   };
 }

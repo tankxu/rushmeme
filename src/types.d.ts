@@ -32,6 +32,11 @@ declare global {
     openExternal: (url: string) => Promise<void>;
   }
 
+  interface RushLanguageContext {
+    get: () => Promise<string>;
+    set: (locale: string) => Promise<string>;
+  }
+
   interface RushConfigContext {
     getConfig: () => Promise<RuntimeConfig>;
     saveConfig: (config: AppConfig) => Promise<void>;
@@ -47,5 +52,6 @@ declare global {
     electronWindow: ElectronWindow;
     electronShell: ElectronShellContext;
     rushConfig: RushConfigContext;
+    rushLanguage: RushLanguageContext;
   }
 }
