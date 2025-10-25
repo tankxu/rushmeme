@@ -4,6 +4,7 @@ import registerListeners from "./helpers/ipc/listeners-register";
 // "electron-squirrel-startup" seems broken when packaging with vite
 //import started from "electron-squirrel-startup";
 import path from "path";
+import fs from "fs";
 import {
   installExtension,
   REACT_DEVELOPER_TOOLS,
@@ -157,14 +158,20 @@ function refreshTrayMenu(config?: AppConfig | RuntimeConfig) {
 }
 
 function buildTrayIcon() {
-  if (process.platform === "darwin") {
-    const searchDirectories = [
-      path.join(app.getAppPath(), "images"),
-      path.join(app.getAppPath()),
-      path.join(process.cwd(), "images"),
-      path.join(process.cwd()),
-    ];
+  const searchDirectories = Array.from(
+    new Set(
+      [
+        path.join(process.resourcesPath, "images"),
+        process.resourcesPath,
+        path.join(app.getAppPath(), "images"),
+        app.getAppPath(),
+        path.join(process.cwd(), "images"),
+        process.cwd(),
+      ].filter(Boolean),
+    ),
+  );
 
+  if (process.platform === "darwin") {
     const macCandidates = [
       "trayTemplate.icns",
       "trayTemplate.png",
@@ -196,14 +203,22 @@ function buildTrayIcon() {
   }
 
   if (process.platform === "win32") {
-    const iconPath = path.join(process.cwd(), "images", "trayTemplate.ico");
-    return iconPath;
+    for (const directory of searchDirectories) {
+      const candidate = path.join(directory, "trayTemplate.ico");
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    return path.join(process.resourcesPath, "images", "trayTemplate.ico");
   }
 
-  const linuxIconPath = path.join(process.cwd(), "images", "trayTemplate.png");
-  const linuxImage = nativeImage.createFromPath(linuxIconPath);
-  if (!linuxImage.isEmpty()) {
-    return linuxImage;
+  for (const directory of searchDirectories) {
+    const linuxIconPath = path.join(directory, "trayTemplate.png");
+    const linuxImage = nativeImage.createFromPath(linuxIconPath);
+    if (!linuxImage.isEmpty()) {
+      return linuxImage;
+    }
   }
 
   const macSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="32" viewBox="0 0 576 512"><path fill="#2563eb" d="M528 56c0-13.3-10.7-24-24-24s-24 10.7-24 24v8H32C14.3 64 0 78.3 0 96v112c0 17.7 14.3 32 32 32h10c20.8 0 36.1 19.6 31 39.8L33 440.2c-2.4 9.6-.2 19.7 5.8 27.5S54.1 480 64 480h96c14.7 0 27.5-10 31-24.2L217 352h104.4c23.7 0 44.8-14.9 52.7-37.2l26.7-74.8h31.1c8.5 0 16.6-3.4 22.6-9.4l22.6-22.6h66.7c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32h-16v-8zM321.4 304h-92.5l16-64h105l-21 58.7c-1.1 3.2-4.2 5.3-7.5 5.3M80 128h384c8.8 0 16 7.2 16 16s-7.2 16-16 16H80c-8.8 0-16-7.2-16-16s7.2-16 16-16"/></svg>`;
@@ -248,15 +263,22 @@ function createTray() {
 
 function createWindow() {
   const preload = path.join(__dirname, "preload.js");
+  const isDev = !app.isPackaged;
+  const basePath = isDev ? app.getAppPath() : process.resourcesPath;
+  const iconPath =
+    process.platform === "darwin"
+      ? path.join(basePath, "images/icon.icns")
+      : path.join(basePath, "images/icon.png");
+
   const window = new BrowserWindow({
     width: 800,
     height: 600,
+    icon: iconPath,
     webPreferences: {
       devTools: inDevelopment,
       contextIsolation: true,
       nodeIntegration: true,
       nodeIntegrationInSubFrames: false,
-
       preload: preload,
     },
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",

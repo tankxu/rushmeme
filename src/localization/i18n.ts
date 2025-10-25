@@ -6,7 +6,7 @@ i18n.use(initReactI18next).init({
   resources: {
     en: {
       translation: {
-        appName: "RushMeme",
+        appName: "Rush Meme",
         titleHomePage: "Platform Configuration",
         titleSecondPage: "Upgrade to Pro",
         buttons: {
@@ -24,7 +24,7 @@ i18n.use(initReactI18next).init({
           disabled: "Disabled",
         },
         home: {
-          heading: "RushMeme",
+          heading: "Rush Meme",
           subtitle:
             "Select any contract address and open your trading platform instantly. Stay one step ahead, strike first.",
           platformListTitle: "Platform shortcuts",
@@ -116,7 +116,7 @@ i18n.use(initReactI18next).init({
     },
     "zh-CN": {
       translation: {
-        appName: "RushMeme",
+        appName: "Rush Meme",
         titleHomePage: "平台配置",
         titleSecondPage: "升级至 Pro",
         buttons: {
@@ -134,7 +134,7 @@ i18n.use(initReactI18next).init({
           disabled: "已禁用",
         },
         home: {
-          heading: "RushMeme",
+          heading: "Rush Meme",
           subtitle:
             "一键选中合约地址，瞬间打开交易平台，让你快人一步，抢先出击。",
           platformListTitle: "平台快捷方式",
@@ -154,8 +154,7 @@ i18n.use(initReactI18next).init({
           browserDelayValue: "当前延时 {{value}} 毫秒",
           delayBadge: "升级 Pro 可享0延时启动",
           notificationsTitle: "通知提醒",
-          notificationsDescription:
-            "选择在执行成功或失败时是否展示系统通知。",
+          notificationsDescription: "选择在执行成功或失败时是否展示系统通知。",
           notificationsToggleLabel: "开启系统通知",
           statusTitle: "自动保存状态",
           status: {
