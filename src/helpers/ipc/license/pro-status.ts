@@ -1,6 +1,7 @@
 let cachedStatus: boolean | null = null;
 
 const TRUTHY_FLAGS = new Set(["1", "true", "yes", "pro", "enabled"]);
+const FALSY_FLAGS = new Set(["0", "false", "no", "disabled"]);
 
 function readEnvironmentFlag(): boolean | null {
   const candidates = [
@@ -10,21 +11,47 @@ function readEnvironmentFlag(): boolean | null {
   ];
 
   for (const value of candidates) {
-    if (typeof value === "string") {
-      const normalized = value.trim().toLowerCase();
-      if (TRUTHY_FLAGS.has(normalized)) {
-        return true;
-      }
-      if (normalized.length > 0) {
-        return false;
-      }
+    if (typeof value !== "string") {
+      continue;
+    }
+
+    const normalized = value.trim().toLowerCase();
+    if (TRUTHY_FLAGS.has(normalized)) {
+      return true;
+    }
+    if (FALSY_FLAGS.has(normalized) || normalized.length > 0) {
+      return false;
     }
   }
 
   return null;
 }
 
+const ENVIRONMENT_OVERRIDE = readEnvironmentFlag();
+
+function applyGlobalProFlag(value: boolean) {
+  if (typeof globalThis === "object") {
+    (globalThis as Record<string, unknown>).__RUSHMEME_PRO__ = value;
+  }
+}
+
+export function setProLicensed(value: boolean): boolean {
+  if (ENVIRONMENT_OVERRIDE !== null) {
+    cachedStatus = ENVIRONMENT_OVERRIDE;
+    applyGlobalProFlag(cachedStatus);
+    return cachedStatus;
+  }
+
+  cachedStatus = value;
+  applyGlobalProFlag(cachedStatus);
+  return cachedStatus;
+}
+
 export function isProLicensed(): boolean {
+  if (cachedStatus !== null) {
+    return cachedStatus;
+  }
+
   if (typeof globalThis === "object") {
     const globalFlag = (globalThis as Record<string, unknown>).__RUSHMEME_PRO__;
     if (typeof globalFlag === "boolean") {
@@ -33,16 +60,13 @@ export function isProLicensed(): boolean {
     }
   }
 
-  if (cachedStatus !== null) {
-    return cachedStatus;
-  }
-
-  const envFlag = readEnvironmentFlag();
-  if (envFlag !== null) {
-    cachedStatus = envFlag;
+  if (ENVIRONMENT_OVERRIDE !== null) {
+    cachedStatus = ENVIRONMENT_OVERRIDE;
+    applyGlobalProFlag(cachedStatus);
     return cachedStatus;
   }
 
   cachedStatus = false;
+  applyGlobalProFlag(cachedStatus);
   return cachedStatus;
 }

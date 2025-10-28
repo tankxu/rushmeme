@@ -1,5 +1,5 @@
 import { PLATFORM_TEMPLATES, DEFAULT_BROWSER_DELAY } from "./platform-templates";
-import type { AppConfig, PlatformConfig } from "@/types/config";
+import type { AppConfig, LicenseSnapshot, PlatformConfig } from "@/types/config";
 import { convertDisplayShortcutToAccelerator } from "@/utils/shortcut";
 import { extractChainSpecFromUrl, normalizeUrlTemplates } from "@/utils/chain";
 
@@ -41,6 +41,22 @@ export function instantiateDefaultPlatforms(includeCatalogOnly = false): Platfor
   );
 }
 
+export function createDefaultLicenseSnapshot(): LicenseSnapshot {
+  return {
+    key: null,
+    status: "missing",
+    deviceId: "",
+    deviceName: null,
+    issuedTo: null,
+    expiresAt: null,
+    lastValidatedAt: null,
+    nextCheckInAt: null,
+    remainingActivations: null,
+    lastErrorCode: null,
+    lastErrorMessage: null,
+  };
+}
+
 export function createDefaultAppConfig(): AppConfig {
   const platforms = instantiateDefaultPlatforms(false).map((platform, index) => ({
     ...platform,
@@ -53,5 +69,6 @@ export function createDefaultAppConfig(): AppConfig {
       enabled: true,
     },
     browserDelayMs: DEFAULT_BROWSER_DELAY,
+    license: createDefaultLicenseSnapshot(),
   };
 }

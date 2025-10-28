@@ -303,7 +303,6 @@ export function extractAddressesFromText(text: string): DetectedAddress[] {
   {
     const evmRegex = /0x[0-9a-fA-F]{40}/g;
     let match: RegExpExecArray | null;
-    // eslint-disable-next-line no-cond-assign
     while ((match = evmRegex.exec(text)) !== null) {
       const candidateAddress = match[0];
       registerCandidate(candidateAddress, "evm", match.index);
@@ -317,7 +316,6 @@ export function extractAddressesFromText(text: string): DetectedAddress[] {
       "g",
     );
     let match: RegExpExecArray | null;
-    // eslint-disable-next-line no-cond-assign
     while ((match = solanaRegex.exec(text)) !== null) {
       const candidateAddress = match[1];
       if (looksLikeSolanaAddress(candidateAddress)) {

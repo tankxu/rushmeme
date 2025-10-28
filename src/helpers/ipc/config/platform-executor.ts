@@ -43,7 +43,9 @@ function showNotification(options: ShowNotificationOptions) {
   const variant = options.variant ?? "info";
   const emoji = options.titleEmoji ?? DEFAULT_TITLE_EMOJI[variant];
   const decoratedTitle =
-    emoji && !options.title.startsWith(emoji) ? `${emoji} ${options.title}` : options.title;
+    emoji && !options.title.startsWith(emoji)
+      ? `${emoji} ${options.title}`
+      : options.title;
 
   new Notification({
     title: decoratedTitle,
@@ -74,7 +76,7 @@ async function simulateCopyShortcut() {
       await execFileAsync("osascript", ["-e", script]);
       console.log("[rushmeme] execute copy shortcut", new Date().toISOString());
 
-      await delay(100);
+      // await delay(10);
       console.log(clipboard.readText());
 
       return true;

@@ -5,8 +5,13 @@ import type {
   AppConfig,
   ExecutePlatformsRequest,
   ExecutePlatformsResponse,
+  LicenseSnapshot,
   RuntimeConfig,
 } from "@/types/config";
+import type {
+  LicenseActivationSummary,
+  LicenseOperationResult,
+} from "@/helpers/ipc/license/license-service";
 
 export {};
 
@@ -47,11 +52,29 @@ declare global {
     resumeShortcuts: () => void;
   }
 
+  interface RushLicenseContext {
+    getStatus: () => Promise<LicenseSnapshot>;
+    activate: (key: string) => Promise<LicenseOperationResult>;
+    validate: () => Promise<LicenseOperationResult>;
+    deactivate: () => Promise<LicenseOperationResult>;
+    fetchActivationSummary: () => Promise<{
+      success: boolean;
+      snapshot: LicenseSnapshot;
+      summary: LicenseActivationSummary | null;
+      code?: string;
+      message?: string;
+    }>;
+    watch: (
+      listener: (snapshot: LicenseSnapshot) => void,
+    ) => Promise<() => void>;
+  }
+
   interface Window {
     themeMode: ThemeModeContext;
     electronWindow: ElectronWindow;
     electronShell: ElectronShellContext;
     rushConfig: RushConfigContext;
     rushLanguage: RushLanguageContext;
+    rushLicense: RushLicenseContext;
   }
 }

@@ -1,0 +1,7 @@
+export const LICENSE_GET_STATUS_CHANNEL = "license:getStatus";
+export const LICENSE_ACTIVATE_CHANNEL = "license:activate";
+export const LICENSE_VALIDATE_CHANNEL = "license:validate";
+export const LICENSE_DEACTIVATE_CHANNEL = "license:deactivate";
+export const LICENSE_FETCH_ACTIVATIONS_CHANNEL = "license:fetchActivations";
+export const LICENSE_WATCH_CHANNEL = "license:watch";
+export const LICENSE_UPDATED_EVENT_CHANNEL = "license:updated";

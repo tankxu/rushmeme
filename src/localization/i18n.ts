@@ -107,10 +107,19 @@ i18n.use(initReactI18next).init({
           actions: {
             purchase: "Purchase license",
             redeem: "Activate Pro",
+            removeDevice: "Remove device binding",
           },
           supportTitle: "Need another payment method?",
           supportDescription:
             "Ping us via Telegram @RushMeme or email pro@rushmeme.app. We accept USDT, TON, and wire transfers.",
+          serialRequired: "Enter your license key to activate.",
+          errors: {
+            unavailable: "Activation service unavailable.",
+            activationFailed: "Unable to activate. Please try again.",
+            deactivationFailed: "Unable to remove activation. Please try again.",
+            activationLimitReached:
+              "Activation limit reached. Remove another device then try again.",
+          },
         },
       },
     },
@@ -213,10 +222,18 @@ i18n.use(initReactI18next).init({
           actions: {
             purchase: "购买授权",
             redeem: "立即激活",
+            removeDevice: "移除设备绑定",
           },
           supportTitle: "需要其他支付方式？",
           supportDescription:
             "欢迎通过 Telegram @RushMeme 或发送邮件到 pro@rushmeme.app；支持 USDT、TON 以及银行转账。",
+          serialRequired: "请输入授权序列号后再激活。",
+          errors: {
+            unavailable: "激活服务暂不可用。",
+            activationFailed: "激活失败，请稍后再试。",
+            deactivationFailed: "解除绑定失败，请稍后再试。",
+            activationLimitReached: "激活额度已用尽，请解除其他设备绑定后再试。",
+          },
         },
       },
     },

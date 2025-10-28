@@ -10,10 +10,27 @@ import { PLATFORM_TEMPLATES, DEFAULT_BROWSER_DELAY } from "@/config/platform-tem
 import { convertDisplayShortcutToAccelerator } from "@/utils/shortcut";
 import { extractChainSpecFromUrl, normalizeUrlTemplates } from "@/utils/chain";
 import { isProLicensed } from "@/helpers/ipc/license/pro-status";
+import {
+  getLicenseSnapshot,
+  setLicenseSnapshot,
+  updateLicenseSnapshot,
+  patchLicenseSnapshot,
+} from "@/helpers/ipc/license/license-store";
 
-const store = new Store<AppConfig>({
+type StoredAppConfig = Omit<AppConfig, "license">;
+
+function createDefaultStoredConfig(): StoredAppConfig {
+  const defaults = createDefaultAppConfig();
+  return {
+    platforms: defaults.platforms,
+    notifications: defaults.notifications,
+    browserDelayMs: defaults.browserDelayMs,
+  };
+}
+
+const store = new Store<StoredAppConfig>({
   name: "rushmeme-config",
-  defaults: createDefaultAppConfig(),
+  defaults: createDefaultStoredConfig(),
 });
 
 function ensurePlatformId(platform: PlatformConfig, index: number): PlatformConfig {
@@ -120,7 +137,9 @@ function normalizeNotifications(
   return fallback;
 }
 
-function normalizeConfig(config: AppConfig): AppConfig {
+type ConfigLike = Pick<AppConfig, "platforms" | "notifications" | "browserDelayMs">;
+
+function normalizeStoredConfig(config: ConfigLike): StoredAppConfig {
   const defaults = createDefaultAppConfig();
   const proLicensed = isProLicensed();
   const templatesByKey = new Map(
@@ -155,17 +174,27 @@ function normalizeConfig(config: AppConfig): AppConfig {
 
 export function getConfig(): RuntimeConfig {
   const storedConfig = store.store;
-  const normalized = normalizeConfig(storedConfig);
+  const normalized = normalizeStoredConfig(storedConfig);
   store.set(normalized);
+  const license = getLicenseSnapshot();
 
   return {
     ...normalized,
+    license,
     isPro: isProLicensed(),
   };
 }
 
-export function saveConfig(config: AppConfig) {
-  const normalized = normalizeConfig(config);
+export function saveConfig(config: AppConfig): AppConfig {
+  const normalized = normalizeStoredConfig(config);
   store.set(normalized);
-  return normalized;
+  const normalizedLicense = config.license
+    ? setLicenseSnapshot(config.license)
+    : getLicenseSnapshot();
+  return {
+    ...normalized,
+    license: normalizedLicense,
+  };
 }
+
+export { getLicenseSnapshot, updateLicenseSnapshot, patchLicenseSnapshot };

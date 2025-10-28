@@ -21,7 +21,16 @@ export default defineConfig([
   },
   { languageOptions: { globals: globals.browser } },
   pluginJs.configs.recommended,
-  pluginReact.configs.flat.recommended,
+  {
+    ...pluginReact.configs.flat.recommended,
+    settings: {
+      ...(pluginReact.configs.flat.recommended.settings ?? {}),
+      react: {
+        ...(pluginReact.configs.flat.recommended.settings?.react ?? {}),
+        version: "detect",
+      },
+    },
+  },
   reactHooks.configs.flat.recommended,
   eslintPluginPrettierRecommended,
   ...tseslint.configs.recommended,

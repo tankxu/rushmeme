@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -18,10 +17,7 @@ import { Input } from "@/components/ui/input";
 import {
   InputGroup,
   InputGroupAddon,
-  InputGroupButton,
   InputGroupInput,
-  InputGroupText,
-  InputGroupTextarea,
 } from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
 import {
@@ -507,6 +503,7 @@ function adjustPlatformForTokenType(
 function HomePage() {
   const { t } = useTranslation();
   const defaultsRef = React.useRef(createDefaultAppConfig());
+  const licenseRef = React.useRef(defaultsRef.current.license);
   const [platforms, setPlatforms] = React.useState<PlatformConfig[]>(
     defaultsRef.current.platforms.map(normalizePlatformForState),
   );
@@ -545,6 +542,8 @@ function HomePage() {
 
   const configApi =
     typeof window !== "undefined" ? window.rushConfig : undefined;
+  const licenseApi =
+    typeof window !== "undefined" ? window.rushLicense : undefined;
   const defaultCustomShortcut = isMac ? "⌘⇧C" : "Ctrl + Shift + C";
 
   React.useEffect(() => {
@@ -558,6 +557,38 @@ function HomePage() {
       setUpgradeDialogOpen(false);
     }
   }, [isPro]);
+
+  React.useEffect(() => {
+    if (!licenseApi?.watch) {
+      return;
+    }
+
+    let disposed = false;
+    let stop: (() => void) | undefined;
+
+    licenseApi
+      .watch((snapshot) => {
+        licenseRef.current = snapshot;
+        setIsPro(snapshot.status === "active");
+      })
+      .then((unsubscribe) => {
+        if (disposed) {
+          unsubscribe();
+          return;
+        }
+        stop = unsubscribe;
+      })
+      .catch((error) => {
+        console.error("Failed to subscribe to license updates", error);
+      });
+
+    return () => {
+      disposed = true;
+      if (stop) {
+        stop();
+      }
+    };
+  }, [licenseApi]);
 
   React.useEffect(() => {
     if (editingMode !== "edit" || !editingPlatformId) {
@@ -595,6 +626,8 @@ function HomePage() {
         setIsPro(Boolean(config.isPro));
         setPlatforms(config.platforms.map(normalizePlatformForState));
         setBrowserDelay(config.browserDelayMs ?? DEFAULT_BROWSER_DELAY);
+        // preserve license for saving
+        licenseRef.current = config.license;
         setNotificationsEnabled(
           Boolean(
             config.notifications?.enabled ??
@@ -633,6 +666,7 @@ function HomePage() {
         enabled: notificationsEnabled,
       },
       browserDelayMs: browserDelay,
+      license: licenseRef.current,
     };
 
     configApi

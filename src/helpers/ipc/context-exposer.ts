@@ -3,6 +3,7 @@ import { exposeWindowContext } from "./window/window-context";
 import { exposeConfigContext } from "./config/config-context";
 import { exposeShellContext } from "./shell/shell-context";
 import { exposeLanguageContext } from "./language/language-context";
+import { exposeLicenseContext } from "./license/license-context";
 
 export default function exposeContexts() {
   exposeWindowContext();
@@ -10,4 +11,5 @@ export default function exposeContexts() {
   exposeConfigContext();
   exposeShellContext();
   exposeLanguageContext();
+  exposeLicenseContext();
 }
