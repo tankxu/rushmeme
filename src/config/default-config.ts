@@ -69,6 +69,7 @@ export function createDefaultAppConfig(): AppConfig {
       enabled: true,
     },
     browserDelayMs: DEFAULT_BROWSER_DELAY,
+    excludedApps: [],
     license: createDefaultLicenseSnapshot(),
   };
 }

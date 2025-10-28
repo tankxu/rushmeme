@@ -48,6 +48,13 @@ i18n.use(initReactI18next).init({
           notificationsDescription:
             "Decide when RushMeme should display OS notifications after an execution attempt.",
           notificationsToggleLabel: "Show notifications",
+          excludedAppsTitle: "Excluded applications",
+          excludedAppsDescription:
+            "Skip RushMeme when these apps are the active window. Matches are case-insensitive.",
+          excludedAppsPlaceholder: "App name or bundle identifier…",
+          excludedAppsAddButton: "Add",
+          excludedAppsEmpty: "No apps excluded yet.",
+          excludedAppsRemoveLabel: "Remove {{app}} from excluded apps",
           statusTitle: "Autosave status",
           status: {
             saving: "Saving changes…",
@@ -165,6 +172,13 @@ i18n.use(initReactI18next).init({
           notificationsTitle: "通知提醒",
           notificationsDescription: "选择在执行成功或失败时是否展示系统通知。",
           notificationsToggleLabel: "开启系统通知",
+          excludedAppsTitle: "排除应用",
+          excludedAppsDescription:
+            "当前窗口属于以下应用时，RushMeme 将忽略快捷键（不区分大小写）。",
+          excludedAppsPlaceholder: "应用名称或 Bundle ID…",
+          excludedAppsAddButton: "添加",
+          excludedAppsEmpty: "尚未排除任何应用。",
+          excludedAppsRemoveLabel: "从排除列表移除 {{app}}",
           statusTitle: "自动保存状态",
           status: {
             saving: "正在保存修改…",

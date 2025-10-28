@@ -25,6 +25,7 @@ function createDefaultStoredConfig(): StoredAppConfig {
     platforms: defaults.platforms,
     notifications: defaults.notifications,
     browserDelayMs: defaults.browserDelayMs,
+    excludedApps: defaults.excludedApps,
   };
 }
 
@@ -137,7 +138,35 @@ function normalizeNotifications(
   return fallback;
 }
 
-type ConfigLike = Pick<AppConfig, "platforms" | "notifications" | "browserDelayMs">;
+function normalizeExcludedApps(
+  rawValue: unknown,
+  fallback: string[],
+): string[] {
+  if (!Array.isArray(rawValue)) {
+    return [...fallback];
+  }
+
+  const normalized = rawValue
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  for (const entry of normalized) {
+    const key = entry.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    unique.push(entry);
+  }
+
+  return unique;
+}
+
+type ConfigLike = Pick<AppConfig, "platforms" | "notifications" | "browserDelayMs" | "excludedApps">;
 
 function normalizeStoredConfig(config: ConfigLike): StoredAppConfig {
   const defaults = createDefaultAppConfig();
@@ -169,6 +198,10 @@ function normalizeStoredConfig(config: ConfigLike): StoredAppConfig {
     browserDelayMs,
     notifications,
     platforms,
+    excludedApps: normalizeExcludedApps(
+      (config as unknown as { excludedApps?: unknown }).excludedApps,
+      defaults.excludedApps,
+    ),
   };
 }
 

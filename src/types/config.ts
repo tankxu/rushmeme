@@ -52,6 +52,7 @@ export type AppConfig = {
   platforms: PlatformConfig[];
   notifications: NotificationConfig;
   browserDelayMs: number;
+  excludedApps: string[];
   license: LicenseSnapshot;
 };
 
@@ -69,4 +70,5 @@ export type ExecutePlatformsResponse = {
   error?: string;
   success: boolean;
   selectionCaptured?: boolean;
+  skippedBecauseExcluded?: boolean;
 };

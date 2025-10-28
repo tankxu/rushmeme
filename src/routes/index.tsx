@@ -50,6 +50,7 @@ import {
   Loader2,
   Plus,
   Settings2,
+  X,
 } from "lucide-react";
 import { isMacOS } from "@/utils/platform";
 import { convertDisplayShortcutToAccelerator } from "@/utils/shortcut";
@@ -513,6 +514,10 @@ function HomePage() {
   const [notificationsEnabled, setNotificationsEnabled] = React.useState(
     defaultsRef.current.notifications.enabled,
   );
+  const [excludedApps, setExcludedApps] = React.useState<string[]>(
+    defaultsRef.current.excludedApps,
+  );
+  const [excludedAppDraft, setExcludedAppDraft] = React.useState("");
   const [isPro, setIsPro] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [status, setStatus] = React.useState<SaveStatus>("saved");
@@ -634,6 +639,11 @@ function HomePage() {
               defaultsRef.current.notifications.enabled,
           ),
         );
+        setExcludedApps(
+          Array.isArray(config.excludedApps)
+            ? [...config.excludedApps]
+            : [...defaultsRef.current.excludedApps],
+        );
         await Promise.resolve();
       } catch (error) {
         console.error("Failed to load RushMeme config", error);
@@ -666,6 +676,7 @@ function HomePage() {
         enabled: notificationsEnabled,
       },
       browserDelayMs: browserDelay,
+      excludedApps,
       license: licenseRef.current,
     };
 
@@ -686,7 +697,7 @@ function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [browserDelay, configApi, loading, notificationsEnabled, platforms]);
+  }, [browserDelay, configApi, excludedApps, loading, notificationsEnabled, platforms]);
 
   React.useEffect(() => {
     if (loading) {
@@ -733,6 +744,45 @@ function HomePage() {
 
     return undefined;
   }, [loading, status]);
+
+  const handleAddExcludedApp = React.useCallback(() => {
+    const candidate = excludedAppDraft.trim();
+    if (!candidate) {
+      return;
+    }
+
+    setExcludedApps((previous) => {
+      const exists = previous.some(
+        (entry) => entry.localeCompare(candidate, undefined, { sensitivity: "accent" }) === 0,
+      );
+      if (exists) {
+        return previous;
+      }
+      return [...previous, candidate];
+    });
+    setExcludedAppDraft("");
+  }, [excludedAppDraft]);
+
+  const handleRemoveExcludedApp = React.useCallback((value: string) => {
+    setExcludedApps((previous) =>
+      previous.filter(
+        (entry) => entry.localeCompare(value, undefined, { sensitivity: "accent" }) !== 0,
+      ),
+    );
+  }, []);
+
+  const handleExcludedAppKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        handleAddExcludedApp();
+      }
+      if (event.key === "Escape") {
+        setExcludedAppDraft("");
+      }
+    },
+    [handleAddExcludedApp],
+  );
 
   const handleTogglePlatform = React.useCallback(
     (id: string, checked: boolean) => {
@@ -1514,6 +1564,64 @@ function HomePage() {
                           }
                         />
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
+                    <div className="space-y-1 sm:w-1/2">
+                      <p className="text-primary text-sm font-semibold">
+                        {t("home.excludedAppsTitle")}
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        {t("home.excludedAppsDescription")}
+                      </p>
+                    </div>
+                    <div className="space-y-3 sm:w-1/2">
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Input
+                          value={excludedAppDraft}
+                          onChange={(event) =>
+                            setExcludedAppDraft(event.target.value)
+                          }
+                          onKeyDown={handleExcludedAppKeyDown}
+                          placeholder={t("home.excludedAppsPlaceholder")}
+                        />
+                        <Button
+                          type="button"
+                          onClick={handleAddExcludedApp}
+                          disabled={!excludedAppDraft.trim()}
+                          className="sm:w-auto"
+                        >
+                          {t("home.excludedAppsAddButton")}
+                        </Button>
+                      </div>
+                      {excludedApps.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {excludedApps.map((app) => (
+                            <Badge
+                              key={app}
+                              variant="secondary"
+                              className="flex items-center gap-1 py-1 pl-2 pr-1"
+                            >
+                              <span className="text-xs">{app}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveExcludedApp(app)}
+                                className="text-muted-foreground transition-colors hover:text-foreground"
+                                aria-label={t("home.excludedAppsRemoveLabel", {
+                                  app,
+                                })}
+                              >
+                                <X className="h-3 w-3" strokeWidth={2} />
+                              </button>
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground text-xs">
+                          {t("home.excludedAppsEmpty")}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </CardContent>
