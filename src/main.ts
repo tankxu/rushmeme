@@ -272,8 +272,8 @@ function createWindow() {
       : path.join(basePath, "images/icon.png");
 
   const window = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 960,
+    height: 800,
     icon: iconPath,
     webPreferences: {
       devTools: inDevelopment,

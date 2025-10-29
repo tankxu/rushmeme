@@ -15,12 +15,15 @@ import type {
   AppConfig,
   ExecutePlatformsRequest,
   ExecutePlatformsResponse,
+  PlatformConfig,
 } from "@/types/config";
 import { convertDisplayShortcutToAccelerator } from "@/utils/shortcut";
+import { getLicenseService } from "@/helpers/ipc/license/license-service";
 
 type ShortcutRegistry = {
   accelerator: string;
   platformId: string;
+  shortcutIndex: number;
 };
 
 type ShortcutState = {
@@ -43,20 +46,39 @@ type ConfigListenerOptions = {
 };
 
 function buildShortcutRegistry(config: AppConfig): ShortcutRegistry[] {
-  return config.platforms
-    .map((platform) => {
-      if (!platform.shortcut && !platform.accelerator) {
-        return null;
+  const registry: ShortcutRegistry[] = [];
+  for (const platform of config.platforms) {
+    if (!platform.enabled) {
+      continue;
+    }
+    const shortcuts = Array.isArray(platform.shortcuts) && platform.shortcuts.length > 0
+      ? platform.shortcuts
+      : [
+          {
+            tokenType: platform.tokenType ?? "",
+            shortcut: platform.shortcut ?? "",
+            accelerator: platform.accelerator,
+          },
+        ];
+
+    shortcuts.forEach((entry, index) => {
+      if (!entry.shortcut && !entry.accelerator) {
+        return;
       }
       const accelerator =
-        platform.accelerator ??
-        convertDisplayShortcutToAccelerator(platform.shortcut);
+        entry.accelerator ??
+        convertDisplayShortcutToAccelerator(entry.shortcut);
       if (!accelerator) {
-        return null;
+        return;
       }
-      return { accelerator, platformId: platform.id };
-    })
-    .filter((entry): entry is ShortcutRegistry => entry !== null);
+      registry.push({
+        accelerator,
+        platformId: platform.id,
+        shortcutIndex: index,
+      });
+    });
+  }
+  return registry;
 }
 
 function unregisterAll() {
@@ -135,33 +157,85 @@ function registerPlatformShortcuts(config: AppConfig) {
   unregisterAll();
   const registry = buildShortcutRegistry(config);
 
+  const grouped = new Map<string, ShortcutRegistry[]>();
   for (const entry of registry) {
+    const existing = grouped.get(entry.accelerator);
+    if (existing) {
+      existing.push(entry);
+    } else {
+      grouped.set(entry.accelerator, [entry]);
+    }
+  }
+
+  for (const [accelerator, entries] of grouped) {
     try {
       const registered = globalShortcut.register(
-        entry.accelerator,
-        createSingleFireCallback(entry.accelerator, async () => {
-          const currentConfig = getConfig();
-          const platform = currentConfig.platforms.find(
-            (item) => item.id === entry.platformId,
-          );
-          if (!platform || !platform.enabled) {
+        accelerator,
+        createSingleFireCallback(accelerator, async () => {
+          const currentConfig = lastConfig ?? getConfig();
+          if (!lastConfig) {
+            lastConfig = currentConfig;
+          }
+          const selectedPlatforms: PlatformConfig[] = [];
+          for (const entry of entries) {
+            const platform = currentConfig.platforms.find(
+              (item) => item.id === entry.platformId,
+            );
+            if (!platform || !platform.enabled) {
+              continue;
+            }
+            const shortcuts =
+              Array.isArray(platform.shortcuts) && platform.shortcuts.length > 0
+                ? platform.shortcuts
+                : [
+                    {
+                      tokenType: platform.tokenType ?? "",
+                      shortcut: platform.shortcut ?? "",
+                      accelerator: platform.accelerator,
+                    },
+                  ];
+            const selectedShortcut =
+              shortcuts[entry.shortcutIndex] ?? shortcuts[0];
+            if (!selectedShortcut) {
+              continue;
+            }
+            const resolvedAccelerator =
+              selectedShortcut.accelerator ??
+              convertDisplayShortcutToAccelerator(selectedShortcut.shortcut) ??
+              undefined;
+            selectedPlatforms.push({
+              ...platform,
+              tokenType: selectedShortcut.tokenType ?? platform.tokenType ?? "",
+              shortcut: selectedShortcut.shortcut ?? platform.shortcut ?? "",
+              accelerator: resolvedAccelerator ?? platform.accelerator,
+              shortcuts: shortcuts.map((shortcutEntry, index) =>
+                index === entry.shortcutIndex
+                  ? {
+                      ...shortcutEntry,
+                      accelerator: resolvedAccelerator,
+                    }
+                  : shortcutEntry,
+              ),
+            });
+          }
+          if (selectedPlatforms.length === 0) {
             return;
           }
           const platformOnlyConfig: AppConfig = {
             ...currentConfig,
-            platforms: [platform],
+            platforms: selectedPlatforms,
           };
           return executePlatforms(platformOnlyConfig);
         }),
       );
       if (!registered) {
         console.warn(
-          `[rushmeme] Failed to register shortcut ${entry.accelerator} (already in use)`,
+          `[rushmeme] Could not register system shortcut ${accelerator}; the operating system reports it is already in use.`,
         );
       }
     } catch (error) {
       console.error(
-        `Failed to register shortcut ${entry.accelerator} for platform ${entry.platformId}:`,
+        `Failed to register shortcut ${accelerator}:`,
         error,
       );
     }
@@ -695,6 +769,14 @@ export function addConfigEventListeners(
       registerPlatformShortcuts(lastConfig);
     }
     event.returnValue = true;
+  });
+
+  const licenseService = getLicenseService();
+  licenseService.on("change", () => {
+    const config = getConfig();
+    lastConfig = config;
+    registerPlatformShortcuts(config);
+    options?.onConfigUpdated?.(config);
   });
 
   app.whenReady().then(() => {

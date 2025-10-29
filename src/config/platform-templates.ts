@@ -4,9 +4,13 @@ export const PLATFORM_TEMPLATES: PlatformTemplate[] = [
   {
     key: "binance-wallet",
     name: "Binance Wallet",
-    tokenType: "BSC | Solana",
-    shortcut: "⌘⇧C",
     enabled: false,
+    shortcuts: [
+      {
+        tokenType: "BSC | Solana",
+        shortcut: "⌘⇧C",
+      },
+    ],
     urls: [
       {
         chain: "bsc",
@@ -25,9 +29,13 @@ export const PLATFORM_TEMPLATES: PlatformTemplate[] = [
   {
     key: "okx-wallet",
     name: "OKX Wallet",
-    tokenType: "BSC | Solana",
-    shortcut: "⌘⇧1",
     enabled: false,
+    shortcuts: [
+      {
+        tokenType: "BSC | Solana",
+        shortcut: "⌃1",
+      },
+    ],
     urls: [
       {
         chain: "bsc",
@@ -48,17 +56,25 @@ export const PLATFORM_TEMPLATES: PlatformTemplate[] = [
   {
     key: "dexscreener",
     name: "DexScreener",
-    tokenType: "Any",
-    shortcut: "⌘⇧2",
     enabled: false,
+    shortcuts: [
+      {
+        tokenType: "Any",
+        shortcut: "⌃2",
+      },
+    ],
     urls: [{ chain: "any", url: "https://dexscreener.com/?token={CA}" }],
   },
   {
     key: "gmgn",
     name: "GMGN",
-    tokenType: "Base | Solana",
-    shortcut: "⌘⇧3",
     enabled: false,
+    shortcuts: [
+      {
+        tokenType: "Base | Solana",
+        shortcut: "⌃3",
+      },
+    ],
     urls: [
       {
         chain: "base",
@@ -73,9 +89,13 @@ export const PLATFORM_TEMPLATES: PlatformTemplate[] = [
   {
     key: "raydium",
     name: "Raydium",
-    tokenType: "Solana",
-    shortcut: "⌘⇧4",
     enabled: false,
+    shortcuts: [
+      {
+        tokenType: "Solana",
+        shortcut: "",
+      },
+    ],
     urls: [
       {
         chain: "solana",
@@ -86,10 +106,14 @@ export const PLATFORM_TEMPLATES: PlatformTemplate[] = [
   {
     key: "debot",
     name: "Debot",
-    tokenType: "BSC | Solana",
-    shortcut: "",
     enabled: false,
     catalogOnly: true,
+    shortcuts: [
+      {
+        tokenType: "BSC | Solana",
+        shortcut: "",
+      },
+    ],
     urls: [
       {
         chain: "bsc",
@@ -104,10 +128,14 @@ export const PLATFORM_TEMPLATES: PlatformTemplate[] = [
   {
     key: "fourmeme",
     name: "Four Meme",
-    tokenType: "BSC",
-    shortcut: "",
     enabled: false,
     catalogOnly: true,
+    shortcuts: [
+      {
+        tokenType: "BSC",
+        shortcut: "",
+      },
+    ],
     urls: [
       {
         chain: "bsc",
@@ -118,10 +146,14 @@ export const PLATFORM_TEMPLATES: PlatformTemplate[] = [
   {
     key: "pumpfun",
     name: "Pump Fun",
-    tokenType: "Solana",
-    shortcut: "",
     enabled: false,
     catalogOnly: true,
+    shortcuts: [
+      {
+        tokenType: "Solana",
+        shortcut: "",
+      },
+    ],
     urls: [
       {
         chain: "solana",
@@ -132,9 +164,13 @@ export const PLATFORM_TEMPLATES: PlatformTemplate[] = [
   {
     key: "x",
     name: "X (Twitter)",
-    tokenType: "Any",
-    shortcut: "⌃X",
     enabled: false,
+    shortcuts: [
+      {
+        tokenType: "Any",
+        shortcut: "⌃X",
+      },
+    ],
     urls: [
       {
         chain: "any",

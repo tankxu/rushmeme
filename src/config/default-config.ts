@@ -12,20 +12,35 @@ function instantiatePlatformTemplate(
     throw new Error(`Unknown platform template: ${templateKey}`);
   }
 
+  const [primary] = template.shortcuts;
+  const primaryTokenType = primary?.tokenType ?? "Any";
+  const primaryShortcut = primary?.shortcut ?? "";
+
   const normalizedUrls = normalizeUrlTemplates(
     template.urls,
-    template.tokenType,
+    primaryTokenType,
   );
+
+  const shortcutsWithAccelerators = template.shortcuts.map((entry) => ({
+    ...entry,
+    accelerator:
+      entry.accelerator ??
+      convertDisplayShortcutToAccelerator(entry.shortcut) ??
+      undefined,
+  }));
 
   return {
     ...template,
     id: index === 0 ? template.key : `${template.key}-${index}`,
-    accelerator: convertDisplayShortcutToAccelerator(template.shortcut),
+    tokenType: primaryTokenType,
+    shortcut: primaryShortcut,
+    accelerator: convertDisplayShortcutToAccelerator(primaryShortcut),
+    shortcuts: shortcutsWithAccelerators,
     urls: normalizedUrls.map((entry) => ({
       ...entry,
       chain: extractChainSpecFromUrl(
         entry.url,
-        entry.chain ?? template.tokenType,
+        entry.chain ?? primaryTokenType,
       ),
     })),
   };

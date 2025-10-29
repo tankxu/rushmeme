@@ -3,6 +3,7 @@ import type {
   AppConfig,
   PlatformConfig,
   PlatformTemplate,
+  PlatformShortcutConfig,
   RuntimeConfig,
 } from "@/types/config";
 import { createDefaultAppConfig, instantiateDefaultPlatforms } from "@/config/default-config";
@@ -21,18 +22,105 @@ type StoredAppConfig = Omit<AppConfig, "license">;
 
 function createDefaultStoredConfig(): StoredAppConfig {
   const defaults = createDefaultAppConfig();
-  return {
-    platforms: defaults.platforms,
-    notifications: defaults.notifications,
-    browserDelayMs: defaults.browserDelayMs,
-    excludedApps: defaults.excludedApps,
-  };
+  return serializeAppConfigForStore(defaults);
 }
 
 const store = new Store<StoredAppConfig>({
   name: "rushmeme-config",
   defaults: createDefaultStoredConfig(),
 });
+
+function sanitizePlatformShortcuts(
+  platform: {
+    shortcuts?: PlatformShortcutConfig[];
+    tokenType?: string;
+    shortcut?: string;
+    accelerator?: string;
+  },
+  template?: PlatformTemplate,
+): PlatformShortcutConfig[] {
+  const templateShortcuts = template?.shortcuts ?? [];
+  const sourceShortcuts =
+    Array.isArray(platform.shortcuts) && platform.shortcuts.length > 0
+      ? platform.shortcuts
+      : [];
+
+  const buildEntry = (
+    entry: PlatformShortcutConfig | undefined,
+    fallback: PlatformShortcutConfig | undefined,
+  ): PlatformShortcutConfig => {
+    const tokenType = (entry?.tokenType ?? fallback?.tokenType ?? "").trim();
+    const shortcut = entry?.shortcut ?? fallback?.shortcut ?? "";
+    const accelerator =
+      entry?.accelerator ??
+      convertDisplayShortcutToAccelerator(shortcut) ??
+      undefined;
+    return {
+      tokenType,
+      shortcut,
+      accelerator,
+    };
+  };
+
+  if (sourceShortcuts.length > 0) {
+    return sourceShortcuts.map((entry, index) =>
+      buildEntry(entry, templateShortcuts[index] ?? templateShortcuts[0]),
+    );
+  }
+
+  const fallback =
+    templateShortcuts[0] ??
+    ({
+      tokenType: platform.tokenType ?? "",
+      shortcut: platform.shortcut ?? "",
+      accelerator:
+        platform.accelerator ??
+        convertDisplayShortcutToAccelerator(platform.shortcut) ??
+        undefined,
+    } satisfies PlatformShortcutConfig);
+
+  return [buildEntry(undefined, fallback)];
+}
+
+function serializePlatformForStore(platform: PlatformConfig): PlatformConfig {
+  const sanitized: PlatformConfig = {
+    ...platform,
+    urls: platform.urls.map((entry) => ({ ...entry })),
+    shortcuts: platform.shortcuts?.map((entry) => ({ ...entry })) ?? [],
+  };
+  sanitized.tokenType = undefined;
+  sanitized.shortcut = undefined;
+  sanitized.accelerator = undefined;
+  return sanitized;
+}
+
+function serializeAppConfigForStore(
+  config: AppConfig | StoredAppConfig,
+): StoredAppConfig {
+  return {
+    platforms: config.platforms.map(serializePlatformForStore),
+    notifications: config.notifications,
+    browserDelayMs: config.browserDelayMs,
+    excludedApps: [...config.excludedApps],
+  };
+}
+
+function clonePlatformConfig(platform: PlatformConfig): PlatformConfig {
+  return {
+    ...platform,
+    urls: platform.urls.map((entry) => ({ ...entry })),
+    shortcuts: platform.shortcuts?.map((entry) => ({ ...entry })) ?? [],
+  };
+}
+
+function cloneStoredConfig(config: StoredAppConfig): StoredAppConfig {
+  return {
+    browserDelayMs: config.browserDelayMs,
+    notifications: { ...config.notifications },
+    platforms: config.platforms.map(clonePlatformConfig),
+    excludedApps: [...config.excludedApps],
+  };
+}
 
 function ensurePlatformId(platform: PlatformConfig, index: number): PlatformConfig {
   if (platform.id) {
@@ -50,11 +138,14 @@ function ensurePlatformDefaults(
   platform: PlatformConfig,
   template?: PlatformTemplate,
 ) {
-  const resolvedShortcut = platform.shortcut ?? template?.shortcut ?? "";
-  const accelerator =
-    platform.accelerator ?? convertDisplayShortcutToAccelerator(resolvedShortcut);
-  const sourceUrls = platform.urls?.length ? platform.urls : template?.urls ?? [];
-  const fallbackChain = platform.tokenType ?? template?.tokenType ?? "";
+  const resolvedShortcuts = sanitizePlatformShortcuts(platform, template);
+  const [primaryShortcut = { tokenType: "", shortcut: "", accelerator: "" }] =
+    resolvedShortcuts;
+  const sourceUrls =
+    platform.urls?.length && platform.urls.length > 0
+      ? platform.urls
+      : template?.urls ?? [];
+  const fallbackChain = primaryShortcut.tokenType ?? "";
   const urls = normalizeUrlTemplates(sourceUrls, fallbackChain).map((entry) => ({
     ...entry,
     chain: extractChainSpecFromUrl(entry.url, entry.chain ?? fallbackChain),
@@ -63,9 +154,10 @@ function ensurePlatformDefaults(
   return {
     ...platform,
     requiresPro: platform.requiresPro ?? template?.requiresPro,
-    tokenType: platform.tokenType ?? template?.tokenType ?? "",
-    shortcut: resolvedShortcut,
-    accelerator,
+    tokenType: primaryShortcut.tokenType,
+    shortcut: primaryShortcut.shortcut,
+    accelerator: primaryShortcut.accelerator,
+    shortcuts: resolvedShortcuts,
     urls,
   };
 }
@@ -77,38 +169,6 @@ function sanitizeBrowserDelay(candidate: unknown, fallback: number): number {
 
   const normalized = Math.max(0, Math.round(candidate));
   return normalized;
-}
-
-function enforceSingleActivePlatform(
-  platforms: PlatformConfig[],
-  proLicensed: boolean,
-): PlatformConfig[] {
-  if (proLicensed) {
-    return platforms.map((platform) => ({ ...platform }));
-  }
-
-  let hasActivated = false;
-  return platforms.map((platform) => {
-    if (!platform.enabled) {
-      return {
-        ...platform,
-        enabled: false,
-      };
-    }
-
-    if (!hasActivated) {
-      hasActivated = true;
-      return {
-        ...platform,
-        enabled: true,
-      };
-    }
-
-    return {
-      ...platform,
-      enabled: false,
-    };
-  });
 }
 
 function normalizeNotifications(
@@ -170,24 +230,27 @@ type ConfigLike = Pick<AppConfig, "platforms" | "notifications" | "browserDelayM
 
 function normalizeStoredConfig(config: ConfigLike): StoredAppConfig {
   const defaults = createDefaultAppConfig();
-  const proLicensed = isProLicensed();
   const templatesByKey = new Map(
     PLATFORM_TEMPLATES.map((template) => [template.key, template]),
   );
 
-  const platformsList = config.platforms?.length
+  const platformsList = (config.platforms?.length
     ? config.platforms
-        .map((platform, index) => ensurePlatformId(platform, index))
-        .map((platform) =>
-          ensurePlatformDefaults(platform, templatesByKey.get(platform.key)),
-        )
-    : instantiateDefaultPlatforms();
+    : instantiateDefaultPlatforms()
+  ).map((platform, index) =>
+    ensurePlatformDefaults(
+      ensurePlatformId(platform, index),
+      templatesByKey.get(platform.key),
+    ),
+  );
 
-  const platforms = enforceSingleActivePlatform(platformsList, proLicensed);
+  const platforms = platformsList.map(clonePlatformConfig);
 
-  const browserDelayMs = proLicensed
-    ? sanitizeBrowserDelay(config.browserDelayMs ?? defaults.browserDelayMs, defaults.browserDelayMs)
-    : DEFAULT_BROWSER_DELAY;
+  const browserDelayMs = sanitizeBrowserDelay(
+    (config as unknown as { browserDelayMs?: unknown }).browserDelayMs ??
+      defaults.browserDelayMs,
+    defaults.browserDelayMs,
+  );
 
   const notifications = normalizeNotifications(
     (config as unknown as { notifications?: unknown }).notifications,
@@ -205,27 +268,152 @@ function normalizeStoredConfig(config: ConfigLike): StoredAppConfig {
   };
 }
 
+function applyRuntimeProOverrides(
+  config: StoredAppConfig,
+  proLicensed: boolean,
+): StoredAppConfig {
+  const cloned = cloneStoredConfig(config);
+  if (proLicensed) {
+    return cloned;
+  }
+
+  let hasActivated = false;
+  const limitedPlatforms = cloned.platforms.map((platform) => {
+    const sourceShortcut =
+      platform.shortcuts?.[0] ??
+      ({
+        tokenType: platform.tokenType ?? "",
+        shortcut: platform.shortcut ?? "",
+        accelerator: platform.accelerator,
+      } satisfies PlatformShortcutConfig);
+
+    const primaryShortcut: PlatformShortcutConfig = {
+      tokenType: sourceShortcut.tokenType?.trim() ?? "",
+      shortcut: sourceShortcut.shortcut ?? "",
+      accelerator:
+        sourceShortcut.accelerator ??
+        convertDisplayShortcutToAccelerator(sourceShortcut.shortcut ?? "") ??
+        undefined,
+    };
+
+    const enabled =
+      platform.enabled && !hasActivated ? ((hasActivated = true), true) : false;
+
+    return {
+      ...platform,
+      enabled,
+      tokenType: primaryShortcut.tokenType,
+      shortcut: primaryShortcut.shortcut,
+      accelerator: primaryShortcut.accelerator,
+      shortcuts: [primaryShortcut],
+    };
+  });
+
+  return {
+    ...cloned,
+    platforms: limitedPlatforms,
+    browserDelayMs: DEFAULT_BROWSER_DELAY,
+    excludedApps: [],
+  };
+}
+
+function mergeProOnlySettings(
+  existing: StoredAppConfig,
+  incoming: StoredAppConfig,
+  proLicensed: boolean,
+): StoredAppConfig {
+  if (proLicensed) {
+    return incoming;
+  }
+
+  const previousById = new Map<string, PlatformConfig>(
+    existing.platforms.map((platform) => [platform.id, platform]),
+  );
+
+  const mergedPlatforms = incoming.platforms.map((platform) => {
+    const previous = previousById.get(platform.id);
+    if (!previous) {
+      return platform;
+    }
+
+    const existingShortcuts =
+      previous.shortcuts?.map((entry) => ({ ...entry })) ?? [];
+    if (existingShortcuts.length === 0) {
+      return platform;
+    }
+
+    const incomingPrimary =
+      platform.shortcuts?.[0] ??
+      ({
+        tokenType: platform.tokenType ?? "",
+        shortcut: platform.shortcut ?? "",
+        accelerator: platform.accelerator,
+      } satisfies PlatformShortcutConfig);
+
+    const nextShortcuts = existingShortcuts.map((entry, index) => {
+      if (index === 0) {
+        return {
+          ...entry,
+          tokenType: incomingPrimary.tokenType,
+          shortcut: incomingPrimary.shortcut,
+          accelerator:
+            incomingPrimary.accelerator ??
+            convertDisplayShortcutToAccelerator(
+              incomingPrimary.shortcut ?? "",
+            ) ??
+            entry.accelerator,
+        };
+      }
+      return entry;
+    });
+
+    const primary = nextShortcuts[0] ?? incomingPrimary;
+
+    return {
+      ...platform,
+      enabled:
+        previous.enabled && !platform.enabled ? previous.enabled : platform.enabled,
+      shortcuts: nextShortcuts,
+      tokenType: primary.tokenType,
+      shortcut: primary.shortcut,
+      accelerator: primary.accelerator,
+    };
+  });
+
+  return {
+    ...incoming,
+    platforms: mergedPlatforms,
+    browserDelayMs: existing.browserDelayMs,
+    excludedApps: [...existing.excludedApps],
+  };
+}
+
 export function getConfig(): RuntimeConfig {
   const storedConfig = store.store;
   const normalized = normalizeStoredConfig(storedConfig);
-  store.set(normalized);
+  store.set(serializeAppConfigForStore(normalized));
+  const proLicensed = isProLicensed();
+  const runtimeConfig = applyRuntimeProOverrides(normalized, proLicensed);
   const license = getLicenseSnapshot();
-
   return {
-    ...normalized,
+    ...runtimeConfig,
     license,
-    isPro: isProLicensed(),
+    isPro: proLicensed,
   };
 }
 
 export function saveConfig(config: AppConfig): AppConfig {
+  const proLicensed = isProLicensed();
+  const existing = normalizeStoredConfig(store.store);
   const normalized = normalizeStoredConfig(config);
-  store.set(normalized);
+  const merged = mergeProOnlySettings(existing, normalized, proLicensed);
+  store.set(serializeAppConfigForStore(merged));
   const normalizedLicense = config.license
     ? setLicenseSnapshot(config.license)
     : getLicenseSnapshot();
+  const runtimeConfig = applyRuntimeProOverrides(merged, proLicensed);
   return {
-    ...normalized,
+    ...runtimeConfig,
     license: normalizedLicense,
   };
 }

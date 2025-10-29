@@ -55,6 +55,8 @@ i18n.use(initReactI18next).init({
           excludedAppsAddButton: "Add",
           excludedAppsEmpty: "No apps excluded yet.",
           excludedAppsRemoveLabel: "Remove {{app}} from excluded apps",
+          shortcutPlaceholder: "Press keys to capture…",
+          shortcutConflictHint: "Also assigned to: {{platforms}}",
           statusTitle: "Autosave status",
           status: {
             saving: "Saving changes…",
@@ -79,14 +81,28 @@ i18n.use(initReactI18next).init({
             tokenUrlsTitle: "Token URLs",
             urlTemplates: "URL templates by chain",
             toggle: "Enable platform",
+            removeTokenType: "Remove token type",
             urlHint: "Use {CA} where the contract address should appear.",
             cancel: "Cancel",
             save: "Save changes",
+            addTokenType: "+ Add token type",
+            deleteConfirmTitle: "Delete this platform?",
+            deleteConfirmDescription:
+              "This action cannot be undone. The platform and its shortcuts will be removed from your configuration.",
+            deleteConfirmCancel: "Cancel",
+            deleteConfirmAction: "Delete",
           },
           upgradeDialog: {
-            title: "Upgrade to launch more platforms",
-            description:
-              "Free plan opens one platform at a time. Go Pro to launch multiple destinations instantly.",
+            multiPlatform: {
+              title: "Upgrade to launch more platforms",
+              description:
+                "Free plan opens one platform at a time. Go Pro to launch multiple destinations instantly.",
+            },
+            advancedConfig: {
+              title: "Upgrade to unlock advanced configuration",
+              description:
+                "Add multiple token types, manage excluded apps, and remove launch delays with RushMeme Pro.",
+            },
           },
         },
         pro: {
@@ -123,7 +139,8 @@ i18n.use(initReactI18next).init({
           errors: {
             unavailable: "Activation service unavailable.",
             activationFailed: "Unable to activate. Please try again.",
-            deactivationFailed: "Unable to remove activation. Please try again.",
+            deactivationFailed:
+              "Unable to remove activation. Please try again.",
             activationLimitReached:
               "Activation limit reached. Remove another device then try again.",
           },
@@ -179,6 +196,8 @@ i18n.use(initReactI18next).init({
           excludedAppsAddButton: "添加",
           excludedAppsEmpty: "尚未排除任何应用。",
           excludedAppsRemoveLabel: "从排除列表移除 {{app}}",
+          shortcutPlaceholder: "按下组合键…",
+          shortcutConflictHint: "重复平台：{{platforms}}",
           statusTitle: "自动保存状态",
           status: {
             saving: "正在保存修改…",
@@ -203,14 +222,28 @@ i18n.use(initReactI18next).init({
             tokenUrlsTitle: "代币 URL",
             urlTemplates: "不同链路的 URL 模板",
             toggle: "启用该平台",
+            removeTokenType: "移除该代币类型",
             urlHint: "请在需要填入合约地址的位置使用 {CA}。",
             cancel: "取消",
             save: "保存修改",
+            addTokenType: "+ 添加 token type",
+            deleteConfirmTitle: "确定要删除这个平台吗？",
+            deleteConfirmDescription:
+              "此操作无法撤销，平台及其快捷键都会从配置中移除。",
+            deleteConfirmCancel: "取消",
+            deleteConfirmAction: "删除",
           },
           upgradeDialog: {
-            title: "升级 Pro 解锁多平台同时打开",
-            description:
-              "免费版一次只能打开一个平台。升级 Pro 后即可同时启动多个平台并享受零延时。",
+            multiPlatform: {
+              title: "升级 Pro 解锁多平台同时打开",
+              description:
+                "免费版一次只能打开一个平台。升级 Pro 后即可同时启动多个平台并享受零延时。",
+            },
+            advancedConfig: {
+              title: "升级后解锁高级配置",
+              description:
+                "升级 Pro 后即可新增更多 token 类型、管理排除应用，并享受零延时启动。",
+            },
           },
         },
         pro: {
@@ -246,7 +279,8 @@ i18n.use(initReactI18next).init({
             unavailable: "激活服务暂不可用。",
             activationFailed: "激活失败，请稍后再试。",
             deactivationFailed: "解除绑定失败，请稍后再试。",
-            activationLimitReached: "激活额度已用尽，请解除其他设备绑定后再试。",
+            activationLimitReached:
+              "激活额度已用尽，请解除其他设备绑定后再试。",
           },
         },
       },

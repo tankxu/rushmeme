@@ -3,19 +3,26 @@ export type PlatformUrlTemplate = {
   url: string;
 };
 
+export type PlatformShortcutConfig = {
+  tokenType: string;
+  shortcut: string;
+  accelerator?: string;
+};
+
 export type PlatformTemplate = {
   key: string;
   name: string;
-  tokenType: string;
-  shortcut: string;
   enabled: boolean;
   catalogOnly?: boolean;
   requiresPro?: boolean;
   urls: PlatformUrlTemplate[];
+  shortcuts: PlatformShortcutConfig[];
 };
 
 export type PlatformConfig = PlatformTemplate & {
   id: string;
+  tokenType?: string;
+  shortcut?: string;
   accelerator?: string;
 };
 

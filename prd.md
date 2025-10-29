@@ -92,7 +92,7 @@ RushMeme 是一款面向加密资产交易与投研用户的桌面应用。产�
 
 ## 5. 数据结构概要
 
-- `PlatformConfig`：`{ id, key?, name, tokenType, urls: { evm?, sol?, any? }, shortcut, enabled }`
+- `PlatformConfig`：`{ id, key?, name, tokenType, shortcuts: [{ tokenType, shortcut, accelerator? }], urls: { evm?, sol?, any? }, shortcut, enabled }`
 - `NotificationConfig`：`{ showOnSuccess: boolean, showOnError: boolean }`
 - `CopySimulationConfig`：`{ enabled: boolean, delayMs: number }`
 - `AppConfig`：整合平台数组、通知、复制、版本等信息。

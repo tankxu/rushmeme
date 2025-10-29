@@ -331,7 +331,6 @@ async function captureSelectedText(): Promise<{
   const sentinel = `__rushmeme_selection_sentinel__${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
   clipboard.writeText(sentinel);
-  console.log("[rushmeme] execute action 2", new Date().toISOString());
 
   const commandIssued = await simulateCopyShortcut();
   if (!commandIssued) {
@@ -344,9 +343,13 @@ async function captureSelectedText(): Promise<{
   const started = Date.now();
 
   let candidate: string | null = null;
+  let attempts = 0;
 
   while (Date.now() - started < timeoutMs) {
-    await delay(intervalMs);
+    if (attempts > 0) {
+      await delay(intervalMs);
+    }
+    attempts += 1;
     try {
       const current = clipboard.readText();
       if (current && current !== sentinel) {

@@ -5,12 +5,7 @@ import ToggleTheme from "@/components/ToggleTheme";
 import LangToggle from "@/components/LangToggle";
 import Footer from "@/components/template/Footer";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -50,11 +45,16 @@ import {
   Loader2,
   Plus,
   Settings2,
+  Trash2,
   X,
 } from "lucide-react";
 import { isMacOS } from "@/utils/platform";
 import { convertDisplayShortcutToAccelerator } from "@/utils/shortcut";
-import type { PlatformConfig, PlatformTemplate } from "@/types/config";
+import type {
+  PlatformConfig,
+  PlatformShortcutConfig,
+  PlatformTemplate,
+} from "@/types/config";
 import {
   PLATFORM_TEMPLATES,
   DEFAULT_BROWSER_DELAY,
@@ -75,6 +75,8 @@ type ShortcutLabels = {
   alt: string;
   shift: string;
 };
+
+type ShortcutConflictMap = Map<string, Map<number, string[]>>;
 
 const MODIFIER_KEYS = new Set(["Meta", "Control", "Shift", "Alt"]);
 
@@ -207,30 +209,163 @@ function getChainDisplayLabel(
   return effectiveTokens.map(formatChainTokenDisplay).join(" / ");
 }
 
+function preparePlatformShortcuts(
+  platform: PlatformConfig | PlatformTemplate,
+): {
+  shortcuts: PlatformShortcutConfig[];
+  primary: PlatformShortcutConfig;
+} {
+  const baseShortcuts =
+    Array.isArray(platform.shortcuts) && platform.shortcuts.length > 0
+      ? platform.shortcuts
+      : [];
+
+  const fallbackTokenType =
+    canonicalizeTokenType(
+      "tokenType" in platform ? (platform.tokenType ?? "") : "",
+    ) ??
+    ("tokenType" in platform && platform.tokenType
+      ? platform.tokenType
+      : "Any");
+
+  const fallbackShortcut =
+    "shortcut" in platform ? (platform.shortcut ?? "") : "";
+
+  const fallbackAccelerator =
+    "accelerator" in platform && platform.accelerator
+      ? platform.accelerator
+      : (convertDisplayShortcutToAccelerator(fallbackShortcut) ?? undefined);
+
+  const source =
+    baseShortcuts.length > 0
+      ? baseShortcuts
+      : [
+          {
+            tokenType: fallbackTokenType,
+            shortcut: fallbackShortcut,
+            accelerator: fallbackAccelerator,
+          },
+        ];
+
+  const sanitized = source.map((entry, index) => {
+    const canonicalToken =
+      canonicalizeTokenType(entry.tokenType) ??
+      (index === 0 ? fallbackTokenType : (entry.tokenType ?? ""));
+    const shortcut = entry.shortcut ?? "";
+    const accelerator =
+      entry.accelerator ??
+      convertDisplayShortcutToAccelerator(shortcut) ??
+      undefined;
+    return {
+      tokenType: canonicalToken ?? "",
+      shortcut,
+      accelerator,
+    };
+  });
+
+  const [primary] = sanitized;
+  return {
+    shortcuts: sanitized,
+    primary: primary ?? {
+      tokenType: fallbackTokenType,
+      shortcut: fallbackShortcut,
+      accelerator: fallbackAccelerator,
+    },
+  };
+}
+
+function computeShortcutConflicts(
+  platforms: PlatformConfig[],
+): ShortcutConflictMap {
+  const conflicts = new Map<string, Map<number, string[]>>();
+  const acceleratorMap = new Map<
+    string,
+    Array<{
+      platformId: string;
+      platformName: string;
+      shortcutIndex: number;
+    }>
+  >();
+
+  for (const platform of platforms) {
+    const { shortcuts } = preparePlatformShortcuts(platform);
+    shortcuts.forEach((entry, index) => {
+      const accelerator =
+        entry.accelerator ??
+        (entry.shortcut
+          ? convertDisplayShortcutToAccelerator(entry.shortcut)
+          : undefined);
+      if (!accelerator) {
+        return;
+      }
+      const normalized = accelerator.toLowerCase();
+      const record = {
+        platformId: platform.id,
+        platformName: platform.name,
+        shortcutIndex: index,
+      };
+      const bucket = acceleratorMap.get(normalized);
+      if (bucket) {
+        bucket.push(record);
+      } else {
+        acceleratorMap.set(normalized, [record]);
+      }
+    });
+  }
+
+  for (const entries of acceleratorMap.values()) {
+    if (entries.length <= 1) {
+      continue;
+    }
+    for (const entry of entries) {
+      const otherNames = Array.from(
+        new Set(
+          entries
+            .filter((candidate) => candidate.platformId !== entry.platformId)
+            .map((candidate) => candidate.platformName),
+        ),
+      );
+      if (otherNames.length === 0) {
+        continue;
+      }
+      let platformConflicts = conflicts.get(entry.platformId);
+      if (!platformConflicts) {
+        platformConflicts = new Map<number, string[]>();
+        conflicts.set(entry.platformId, platformConflicts);
+      }
+      platformConflicts.set(entry.shortcutIndex, otherNames);
+    }
+  }
+
+  return conflicts;
+}
+
 function instantiatePlatformInstance(
   template: PlatformTemplate,
   index: number,
 ): PlatformConfig {
+  const { shortcuts, primary } = preparePlatformShortcuts(template);
   const normalizedUrls = normalizeUrlTemplates(
     template.urls,
-    template.tokenType,
+    primary.tokenType,
   );
   return {
     id: index === 0 ? template.key : `${template.key}-${index}`,
     key: template.key,
     name: template.name,
-    tokenType: template.tokenType,
-    shortcut: template.shortcut,
+    tokenType: primary.tokenType,
+    shortcut: primary.shortcut,
     enabled: template.enabled,
     requiresPro: template.requiresPro,
+    shortcuts,
     urls: normalizedUrls.map((entry) => ({
       ...entry,
       chain: extractChainSpecFromUrl(
         entry.url,
-        entry.chain ?? template.tokenType,
+        entry.chain ?? primary.tokenType,
       ),
     })),
-    accelerator: convertDisplayShortcutToAccelerator(template.shortcut),
+    accelerator: primary.accelerator,
   };
 }
 
@@ -263,7 +398,10 @@ function canonicalizeTokenType(spec?: string): string | null {
   return sorted.map(formatChainTokenDisplay).join(" | ");
 }
 
-function buildTokenOptions(platform: PlatformConfig): string[] {
+function buildTokenOptions(
+  platform: PlatformConfig,
+  currentTokenType?: string,
+): string[] {
   const template = PLATFORM_TEMPLATES.find((item) => item.key === platform.key);
   const options = new Map<string, string>();
   const solanaCandidates = new Set<string>();
@@ -322,7 +460,9 @@ function buildTokenOptions(platform: PlatformConfig): string[] {
     }
   }
 
-  const currentCanonical = canonicalizeTokenType(platform.tokenType);
+  const currentCanonical = canonicalizeTokenType(
+    currentTokenType ?? platform.tokenType,
+  );
   if (currentCanonical) {
     const key = buildKey(currentCanonical);
     if (!options.has(key)) {
@@ -359,6 +499,8 @@ function clonePlatformForCustom(
   }));
 
   const canonicalTokenType = canonicalizeTokenType(tokenType) ?? tokenType;
+  const primaryAccelerator =
+    convertDisplayShortcutToAccelerator(shortcutDisplay) ?? undefined;
 
   return {
     id: `custom-${Date.now()}`,
@@ -368,37 +510,57 @@ function clonePlatformForCustom(
     shortcut: shortcutDisplay,
     enabled: initiallyEnabled,
     urls,
-    accelerator: convertDisplayShortcutToAccelerator(shortcutDisplay),
+    accelerator: primaryAccelerator,
+    shortcuts: [
+      {
+        tokenType: canonicalTokenType,
+        shortcut: shortcutDisplay,
+        accelerator: primaryAccelerator,
+      },
+    ],
   };
 }
 
 function withAccelerator(platform: PlatformConfig): PlatformConfig {
-  const accelerator = convertDisplayShortcutToAccelerator(platform.shortcut);
+  const { shortcuts, primary } = preparePlatformShortcuts(platform);
   return {
     ...platform,
-    accelerator: accelerator ?? platform.accelerator,
+    tokenType: primary.tokenType,
+    shortcut: primary.shortcut,
+    accelerator: primary.accelerator ?? platform.accelerator,
+    shortcuts,
   };
 }
 
 function normalizePlatformForState(platform: PlatformConfig): PlatformConfig {
+  const { shortcuts, primary } = preparePlatformShortcuts(platform);
   const normalizedUrls = normalizeUrlTemplates(
     platform.urls,
-    platform.tokenType,
+    primary.tokenType,
   );
-  return withAccelerator({
+  return {
     ...platform,
-    tokenType: canonicalizeTokenType(platform.tokenType) ?? platform.tokenType,
+    tokenType: primary.tokenType,
+    shortcut: primary.shortcut,
+    accelerator:
+      primary.accelerator ??
+      convertDisplayShortcutToAccelerator(primary.shortcut),
+    shortcuts,
     urls: normalizedUrls.map((entry) => ({
       ...entry,
       chain: extractChainSpecFromUrl(entry.url, entry.chain),
     })),
-  });
+  };
 }
 
 function clonePlatformConfig(platform: PlatformConfig): PlatformConfig {
+  const { shortcuts, primary } = preparePlatformShortcuts(platform);
   return {
     ...platform,
-    tokenType: canonicalizeTokenType(platform.tokenType) ?? platform.tokenType,
+    tokenType: primary.tokenType,
+    shortcut: primary.shortcut,
+    accelerator: primary.accelerator,
+    shortcuts: shortcuts.map((entry) => ({ ...entry })),
     urls: platform.urls.map((entry) => ({ ...entry })),
   };
 }
@@ -406,9 +568,25 @@ function clonePlatformConfig(platform: PlatformConfig): PlatformConfig {
 function adjustPlatformForTokenType(
   platform: PlatformConfig,
   tokenType: string,
+  shortcutIndex = 0,
 ): PlatformConfig {
   const canonicalTarget = canonicalizeTokenType(tokenType) ?? tokenType;
-  const targetTokens = parseChainSpec(tokenType).map((token) =>
+  const { shortcuts } = preparePlatformShortcuts(platform);
+  const updatedShortcuts = shortcuts.map((entry, index) =>
+    index === shortcutIndex
+      ? {
+          ...entry,
+          tokenType: canonicalTarget,
+        }
+      : entry,
+  );
+
+  let updatedPlatform: PlatformConfig = {
+    ...platform,
+    shortcuts: updatedShortcuts,
+  };
+
+  const targetTokens = parseChainSpec(canonicalTarget).map((token) =>
     normalizeChainTokenKey(token),
   );
   const canonical = (spec: string) =>
@@ -427,21 +605,63 @@ function adjustPlatformForTokenType(
         ...entry,
         chain: extractChainSpecFromUrl(entry.url, entry.chain),
       })),
-      tokenType,
+      canonicalTarget,
     ).map((entry) => ({
       ...entry,
-      chain: extractChainSpecFromUrl(entry.url, entry.chain ?? tokenType),
+      chain: extractChainSpecFromUrl(entry.url, entry.chain ?? canonicalTarget),
     }));
 
-  const normalizedCurrent = normalizeSource(platform.urls);
+  const normalizedCurrent = normalizeSource(updatedPlatform.urls);
   const currentByChain = new Map(
     normalizedCurrent.map((entry) => [canonical(entry.chain), entry]),
   );
 
+  if (shortcutIndex !== 0) {
+    const normalizedKeys = new Set(
+      normalizedCurrent.map((entry) => canonical(entry.chain)),
+    );
+    const canonicalKey = canonical(canonicalTarget);
+    if (!normalizedKeys.has(canonicalKey)) {
+      const templateNormalized = template ? normalizeSource(template.urls) : [];
+      const templateMatch = templateNormalized.find(
+        (entry) => canonical(entry.chain) === canonicalKey,
+      );
+
+      let ensuredEntry = templateMatch;
+      if (!ensuredEntry) {
+        const fallbackSource = template?.urls?.find(
+          (entry) => canonical(entry.chain ?? canonicalTarget) === canonicalKey,
+        ) ?? {
+          chain: canonicalTarget,
+          url: "https://example.com/{CA}",
+        };
+        const [normalizedFallback] = normalizeSource([
+          {
+            ...fallbackSource,
+            chain: extractChainSpecFromUrl(
+              fallbackSource.url,
+              fallbackSource.chain ?? canonicalTarget,
+            ),
+          },
+        ]);
+        ensuredEntry = normalizedFallback;
+      }
+
+      updatedPlatform = {
+        ...updatedPlatform,
+        urls: [...updatedPlatform.urls, ensuredEntry],
+      };
+    }
+
+    return withAccelerator(updatedPlatform);
+  }
+
   let nextUrls: typeof normalizedCurrent;
 
+  let templateNormalized: typeof normalizedCurrent | undefined;
+
   if (template) {
-    const templateNormalized = normalizeSource(template.urls);
+    templateNormalized = normalizeSource(template.urls);
     nextUrls = templateNormalized.map((entry) => {
       const existing = currentByChain.get(canonical(entry.chain));
       if (existing) {
@@ -479,8 +699,8 @@ function adjustPlatformForTokenType(
 
   if (nextUrls.length === 0) {
     const fallbackSource = template?.urls?.[0] ??
-      platform.urls?.[0] ?? {
-        chain: tokenType,
+      updatedPlatform.urls?.[0] ?? {
+        chain: canonicalTarget,
         url: "https://example.com/{CA}",
       };
     nextUrls = normalizeSource([
@@ -488,17 +708,92 @@ function adjustPlatformForTokenType(
         ...fallbackSource,
         chain: extractChainSpecFromUrl(
           fallbackSource.url,
-          fallbackSource.chain ?? tokenType,
+          fallbackSource.chain ?? canonicalTarget,
         ),
       },
     ]);
   }
 
-  return {
-    ...platform,
+  updatedPlatform = {
+    ...updatedPlatform,
     tokenType: canonicalTarget,
     urls: nextUrls,
   };
+
+  return withAccelerator(updatedPlatform);
+}
+
+function updatePlatformShortcutEntry(
+  platform: PlatformConfig,
+  index: number,
+  changes: Partial<PlatformShortcutConfig>,
+): PlatformConfig {
+  const { shortcuts } = preparePlatformShortcuts(platform);
+  if (shortcuts.length === 0) {
+    return withAccelerator({
+      ...platform,
+      shortcuts: [
+        {
+          tokenType: changes.tokenType ?? platform.tokenType ?? "Any",
+          shortcut: changes.shortcut ?? platform.shortcut ?? "",
+          accelerator:
+            changes.accelerator ??
+            platform.accelerator ??
+            convertDisplayShortcutToAccelerator(
+              changes.shortcut ?? platform.shortcut ?? "",
+            ) ??
+            undefined,
+        },
+      ],
+    });
+  }
+
+  const targetIndex = Math.max(0, Math.min(index, shortcuts.length - 1));
+  const updatedShortcuts = shortcuts.map((entry, idx) =>
+    idx === targetIndex ? { ...entry, ...changes } : entry,
+  );
+
+  return withAccelerator({
+    ...platform,
+    shortcuts: updatedShortcuts,
+  });
+}
+
+function appendPlatformShortcutEntry(
+  platform: PlatformConfig,
+  entry?: Partial<PlatformShortcutConfig>,
+): PlatformConfig {
+  const { shortcuts } = preparePlatformShortcuts(platform);
+  const tokenTypeCandidate = entry?.tokenType ?? platform.tokenType ?? "Any";
+  const shortcutCandidate = entry?.shortcut ?? "";
+  const newEntry: PlatformShortcutConfig = {
+    tokenType: canonicalizeTokenType(tokenTypeCandidate) ?? tokenTypeCandidate,
+    shortcut: shortcutCandidate,
+    accelerator:
+      entry?.accelerator ??
+      convertDisplayShortcutToAccelerator(shortcutCandidate) ??
+      undefined,
+  };
+
+  return withAccelerator({
+    ...platform,
+    shortcuts: [...shortcuts, newEntry],
+  });
+}
+
+function removePlatformShortcutEntry(
+  platform: PlatformConfig,
+  index: number,
+): PlatformConfig {
+  const { shortcuts } = preparePlatformShortcuts(platform);
+  if (shortcuts.length <= 1 || index <= 0 || index >= shortcuts.length) {
+    return platform;
+  }
+  const filtered = shortcuts.filter((_, idx) => idx !== index);
+  return withAccelerator({
+    ...platform,
+    shortcuts: filtered,
+  });
 }
 
 function HomePage() {
@@ -526,6 +821,9 @@ function HomePage() {
   const hasStatusMounted = React.useRef(false);
   const hideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [upgradeDialogOpen, setUpgradeDialogOpen] = React.useState(false);
+  const [upgradeDialogVariant, setUpgradeDialogVariant] = React.useState<
+    "multiPlatform" | "advancedConfig"
+  >("multiPlatform");
   const [editingPlatformId, setEditingPlatformId] = React.useState<
     string | null
   >(null);
@@ -534,6 +832,10 @@ function HomePage() {
   const [editingMode, setEditingMode] = React.useState<
     "create" | "edit" | null
   >(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(
+    null,
+  );
   const isMac = React.useMemo(() => isMacOS(), []);
   const shortcutLabels = React.useMemo(
     () => ({
@@ -544,6 +846,31 @@ function HomePage() {
     }),
     [isMac],
   );
+
+  const inlineShortcutConflicts = React.useMemo(
+    () => computeShortcutConflicts(platforms),
+    [platforms],
+  );
+
+  const dialogShortcutConflicts = React.useMemo(() => {
+    if (!editingPlatformDraft) {
+      return null;
+    }
+    const others = platforms.filter(
+      (platform) => platform.id !== editingPlatformDraft.id,
+    );
+    return computeShortcutConflicts([...others, editingPlatformDraft]);
+  }, [editingPlatformDraft, platforms]);
+
+  const previousIsProRef = React.useRef(isPro);
+
+  React.useEffect(() => {
+    const previous = previousIsProRef.current;
+    if (!previous && isPro) {
+      setBrowserDelay(0);
+    }
+    previousIsProRef.current = isPro;
+  }, [isPro]);
 
   const configApi =
     typeof window !== "undefined" ? window.rushConfig : undefined;
@@ -697,7 +1024,14 @@ function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [browserDelay, configApi, excludedApps, loading, notificationsEnabled, platforms]);
+  }, [
+    browserDelay,
+    configApi,
+    excludedApps,
+    loading,
+    notificationsEnabled,
+    platforms,
+  ]);
 
   React.useEffect(() => {
     if (loading) {
@@ -751,9 +1085,18 @@ function HomePage() {
       return;
     }
 
+    if (!isPro) {
+      setUpgradeDialogVariant("advancedConfig");
+      setUpgradeDialogOpen(true);
+      return;
+    }
+
     setExcludedApps((previous) => {
       const exists = previous.some(
-        (entry) => entry.localeCompare(candidate, undefined, { sensitivity: "accent" }) === 0,
+        (entry) =>
+          entry.localeCompare(candidate, undefined, {
+            sensitivity: "accent",
+          }) === 0,
       );
       if (exists) {
         return previous;
@@ -761,12 +1104,14 @@ function HomePage() {
       return [...previous, candidate];
     });
     setExcludedAppDraft("");
-  }, [excludedAppDraft]);
+  }, [excludedAppDraft, isPro, setUpgradeDialogOpen, setUpgradeDialogVariant]);
 
   const handleRemoveExcludedApp = React.useCallback((value: string) => {
     setExcludedApps((previous) =>
       previous.filter(
-        (entry) => entry.localeCompare(value, undefined, { sensitivity: "accent" }) !== 0,
+        (entry) =>
+          entry.localeCompare(value, undefined, { sensitivity: "accent" }) !==
+          0,
       ),
     );
   }, []);
@@ -798,6 +1143,7 @@ function HomePage() {
           !target.enabled &&
           previous.some((platform) => platform.id !== id && platform.enabled)
         ) {
+          setUpgradeDialogVariant("multiPlatform");
           setUpgradeDialogOpen(true);
           return previous;
         }
@@ -807,17 +1153,21 @@ function HomePage() {
         );
       });
     },
-    [isPro, setUpgradeDialogOpen],
+    [isPro, setUpgradeDialogOpen, setUpgradeDialogVariant],
   );
 
   const handleTokenTypeChange = React.useCallback(
-    (id: string, value: string) => {
+    (id: string, shortcutIndex: number, value: string) => {
       const canonicalValue = canonicalizeTokenType(value) ?? value;
 
       if (editingPlatformId === id) {
         setEditingPlatformDraft((previous) =>
           previous
-            ? adjustPlatformForTokenType(previous, canonicalValue)
+            ? adjustPlatformForTokenType(
+                previous,
+                canonicalValue,
+                shortcutIndex,
+              )
             : previous,
         );
         return;
@@ -829,7 +1179,11 @@ function HomePage() {
             return platform;
           }
 
-          return adjustPlatformForTokenType(platform, canonicalValue);
+          return adjustPlatformForTokenType(
+            platform,
+            canonicalValue,
+            shortcutIndex,
+          );
         }),
       );
     },
@@ -848,6 +1202,33 @@ function HomePage() {
     configApi?.resumeShortcuts?.();
   }, [configApi]);
 
+  const handleBrowserDelayChange = React.useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      if (!isPro) {
+        return;
+      }
+      const rawValue = event.target.value;
+      if (rawValue.trim().length === 0) {
+        setBrowserDelay(0);
+        return;
+      }
+      const parsedSeconds = Number(rawValue);
+      if (!Number.isFinite(parsedSeconds)) {
+        return;
+      }
+      const milliseconds = Math.max(0, Math.round(parsedSeconds * 1000));
+      setBrowserDelay(milliseconds);
+    },
+    [isPro],
+  );
+
+  const displayedDelaySeconds = React.useMemo(() => {
+    const seconds = browserDelay / 1000;
+    if (Number.isInteger(seconds)) {
+      return String(seconds);
+    }
+    return seconds.toFixed(1);
+  }, [browserDelay]);
   const handleNameChange = React.useCallback(
     (id: string, value: string) => {
       if (editingPlatformId === id) {
@@ -1032,9 +1413,44 @@ function HomePage() {
     },
     [editingPlatformId, handleDialogClose],
   );
+  const handleConfirmDelete = React.useCallback(() => {
+    if (!pendingDeleteId) {
+      return;
+    }
+    handleDeletePlatform(pendingDeleteId);
+    setDeleteConfirmOpen(false);
+    setPendingDeleteId(null);
+  }, [handleDeletePlatform, pendingDeleteId]);
+
+  const handleDialogAddTokenShortcut = React.useCallback(() => {
+    if (!editingPlatformId) {
+      return;
+    }
+    if (!isPro) {
+      setUpgradeDialogVariant("advancedConfig");
+      setUpgradeDialogOpen(true);
+      return;
+    }
+    setEditingPlatformDraft((previous) =>
+      previous ? appendPlatformShortcutEntry(previous) : previous,
+    );
+  }, [editingPlatformId, isPro, setUpgradeDialogOpen, setUpgradeDialogVariant]);
+
+  const handleDialogRemoveTokenShortcut = React.useCallback((index: number) => {
+    setEditingPlatformDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return removePlatformShortcutEntry(previous, index);
+    });
+  }, []);
 
   const handleShortcutKeyDown = React.useCallback(
-    (id: string, event: React.KeyboardEvent<HTMLInputElement>) => {
+    (
+      id: string,
+      shortcutIndex: number,
+      event: React.KeyboardEvent<HTMLInputElement>,
+    ) => {
       if (event.key === "Tab") {
         return;
       }
@@ -1051,7 +1467,10 @@ function HomePage() {
         if (editingPlatformId === id) {
           setEditingPlatformDraft((previous) =>
             previous
-              ? { ...previous, shortcut: "", accelerator: undefined }
+              ? updatePlatformShortcutEntry(previous, shortcutIndex, {
+                  shortcut: "",
+                  accelerator: undefined,
+                })
               : previous,
           );
           return;
@@ -1059,7 +1478,10 @@ function HomePage() {
         setPlatforms((previous) =>
           previous.map((platform) =>
             platform.id === id
-              ? { ...platform, shortcut: "", accelerator: undefined }
+              ? updatePlatformShortcutEntry(platform, shortcutIndex, {
+                  shortcut: "",
+                  accelerator: undefined,
+                })
               : platform,
           ),
         );
@@ -1076,11 +1498,10 @@ function HomePage() {
       if (editingPlatformId === id) {
         setEditingPlatformDraft((previous) =>
           previous
-            ? {
-                ...previous,
+            ? updatePlatformShortcutEntry(previous, shortcutIndex, {
                 shortcut: formatted,
-                accelerator: accelerator ?? previous.accelerator,
-              }
+                accelerator: accelerator ?? undefined,
+              })
             : previous,
         );
         return;
@@ -1089,11 +1510,10 @@ function HomePage() {
       setPlatforms((previous) =>
         previous.map((platform) =>
           platform.id === id
-            ? {
-                ...platform,
+            ? updatePlatformShortcutEntry(platform, shortcutIndex, {
                 shortcut: formatted,
-                accelerator: accelerator ?? platform.accelerator,
-              }
+                accelerator: accelerator ?? undefined,
+              })
             : platform,
         ),
       );
@@ -1152,15 +1572,6 @@ function HomePage() {
   const isEditingDialogOpen = editingMode !== null;
   const dialogPlatform = editingPlatformDraft;
   const dialogPlatformId = dialogPlatform?.id ?? editingPlatformId ?? "new";
-  const dialogTokenOptions = dialogPlatform
-    ? buildTokenOptions(dialogPlatform)
-    : [];
-  const dialogTokenValue =
-    dialogPlatform && dialogTokenOptions.length > 0
-      ? (canonicalizeTokenType(dialogPlatform.tokenType) ??
-        dialogTokenOptions[0] ??
-        "Any")
-      : "Any";
 
   return (
     <div className="bg-muted dark:bg-primary-foreground relative flex h-full flex-col">
@@ -1175,9 +1586,11 @@ function HomePage() {
       <Dialog open={upgradeDialogOpen} onOpenChange={setUpgradeDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t("home.upgradeDialog.title")}</DialogTitle>
+            <DialogTitle>
+              {t(`home.upgradeDialog.${upgradeDialogVariant}.title`)}
+            </DialogTitle>
             <DialogDescription>
-              {t("home.upgradeDialog.description")}
+              {t(`home.upgradeDialog.${upgradeDialogVariant}.description`)}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="sm:flex-row sm:justify-end sm:gap-2">
@@ -1201,7 +1614,7 @@ function HomePage() {
         }}
       >
         {dialogPlatform ? (
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
             <DialogHeader>
               <DialogTitle>{t("home.dialog.title")}</DialogTitle>
             </DialogHeader>
@@ -1218,48 +1631,119 @@ function HomePage() {
                   }
                 />
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="grid gap-2">
-                  <Label className="text-sm font-medium sm:min-w-[80px]">
-                    {t("home.dialog.tokenType")}
-                  </Label>
-                  <Select
-                    value={dialogTokenValue}
-                    onValueChange={(value) =>
-                      handleTokenTypeChange(dialogPlatformId, value)
-                    }
-                  >
-                    <SelectTrigger className="sm:max-w-[220px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {dialogTokenOptions.map((token) => (
-                        <SelectItem key={token} value={token}>
-                          {token}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <Label
-                    htmlFor={`platform-shortcut-${dialogPlatformId}`}
-                    className="text-sm font-medium sm:min-w-[80px]"
-                  >
-                    {t("home.dialog.shortcut")}
-                  </Label>
-                  <Input
-                    id={`platform-shortcut-${dialogPlatformId}`}
-                    value={dialogPlatform.shortcut}
-                    readOnly
-                    onFocus={handleShortcutFocus}
-                    onBlur={handleShortcutBlur}
-                    onKeyDown={(event) =>
-                      handleShortcutKeyDown(dialogPlatformId, event)
-                    }
-                    className="sm:max-w-[220px]"
-                  />
-                </div>
+              <div className="space-y-3">
+                {dialogPlatform.shortcuts.map(
+                  (shortcutEntry, shortcutIndex) => {
+                    const tokenOptions = buildTokenOptions(
+                      dialogPlatform,
+                      shortcutEntry.tokenType,
+                    );
+                    const tokenValue =
+                      canonicalizeTokenType(shortcutEntry.tokenType) ??
+                      tokenOptions[0] ??
+                      "Any";
+                    const conflictNames =
+                      dialogShortcutConflicts
+                        ?.get(dialogPlatform.id)
+                        ?.get(shortcutIndex) ?? null;
+                    const conflictHint =
+                      conflictNames && conflictNames.length > 0
+                        ? t("home.shortcutConflictHint", {
+                            platforms: conflictNames.join("、"),
+                          })
+                        : null;
+                    const canRemoveTokenType = shortcutIndex > 0;
+                    return (
+                      <div
+                        key={`${dialogPlatformId}-shortcut-${shortcutIndex}`}
+                        className="grid w-full gap-4 sm:grid-cols-2 sm:items-start"
+                      >
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <Label className="text-sm font-medium">
+                              {t("home.dialog.tokenType")}
+                            </Label>
+                            {canRemoveTokenType ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="text-muted-foreground hover:text-destructive h-5"
+                                onClick={() =>
+                                  handleDialogRemoveTokenShortcut(shortcutIndex)
+                                }
+                              >
+                                <Trash2 className="size-4" />
+                                <span className="sr-only">
+                                  {t("home.dialog.removeTokenType")}
+                                </span>
+                              </Button>
+                            ) : null}
+                          </div>
+                          <Select
+                            value={tokenValue}
+                            onValueChange={(value) =>
+                              handleTokenTypeChange(
+                                dialogPlatformId,
+                                shortcutIndex,
+                                value,
+                              )
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {tokenOptions.map((token) => (
+                                <SelectItem key={token} value={token}>
+                                  {token}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <Label className="text-sm font-medium">
+                            {t("home.dialog.shortcut")}
+                          </Label>
+                          <Input
+                            id={`platform-shortcut-${dialogPlatformId}-${shortcutIndex}`}
+                            value={shortcutEntry.shortcut}
+                            readOnly
+                            onFocus={handleShortcutFocus}
+                            onBlur={handleShortcutBlur}
+                            onKeyDown={(event) =>
+                              handleShortcutKeyDown(
+                                dialogPlatformId,
+                                shortcutIndex,
+                                event,
+                              )
+                            }
+                            placeholder={t("home.shortcutPlaceholder")}
+                            className={
+                              shortcutEntry.shortcut?.trim()
+                                ? "tracking-[0.15em]"
+                                : undefined
+                            }
+                          />
+                          {conflictHint ? (
+                            <span className="text-muted-foreground/60 text-xs">
+                              {conflictHint}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  },
+                )}
+                <Button
+                  type="button"
+                  variant="link"
+                  className="px-0 text-sm font-medium text-cyan-500 hover:no-underline"
+                  onClick={() => handleDialogAddTokenShortcut()}
+                >
+                  {t("home.dialog.addTokenType")}
+                </Button>
               </div>
               <div className="grid gap-2">
                 <Label className="text-sm font-medium">
@@ -1300,17 +1784,19 @@ function HomePage() {
               </div>
             </div>
             <DialogFooter className="sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex-1">
+              <div className="flex flex-1 items-center justify-end gap-2">
                 {editingMode === "edit" && (
                   <Button
-                    variant="destructive"
-                    onClick={() => handleDeletePlatform(dialogPlatformId)}
+                    variant="link"
+                    className="text-destructive px-2 hover:no-underline"
+                    onClick={() => {
+                      setPendingDeleteId(dialogPlatformId);
+                      setDeleteConfirmOpen(true);
+                    }}
                   >
                     {t("home.platformCard.delete")}
                   </Button>
                 )}
-              </div>
-              <div className="flex flex-1 items-center justify-end gap-2">
                 <DialogClose asChild>
                   <Button variant="outline">{t("home.dialog.cancel")}</Button>
                 </DialogClose>
@@ -1326,8 +1812,40 @@ function HomePage() {
           </DialogContent>
         ) : null}
       </Dialog>
+      <Dialog
+        open={deleteConfirmOpen}
+        onOpenChange={(open) => {
+          setDeleteConfirmOpen(open);
+          if (!open) {
+            setPendingDeleteId(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("home.dialog.deleteConfirmTitle")}</DialogTitle>
+            <DialogDescription>
+              {t("home.dialog.deleteConfirmDescription")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:flex-row sm:justify-end sm:gap-2">
+            <DialogClose asChild>
+              <Button variant="outline">
+                {t("home.dialog.deleteConfirmCancel")}
+              </Button>
+            </DialogClose>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              disabled={!pendingDeleteId}
+            >
+              {t("home.dialog.deleteConfirmAction")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto flex min-h-full max-w-6xl flex-col gap-6 p-10">
+        <div className="mx-auto flex min-h-full max-w-5xl flex-col gap-6 p-10">
           <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-2">
               <h1 className="text-3xl font-semibold tracking-tight">
@@ -1385,12 +1903,16 @@ function HomePage() {
                   </div>
                 ) : (
                   platforms.map((platform) => {
-                    const inlineTokenOptions = buildTokenOptions(platform);
-                    const inlineTokenValue =
-                      canonicalizeTokenType(platform.tokenType) ??
-                      inlineTokenOptions[0] ??
-                      "Any";
-                    const activeTokens = parseChainSpec(inlineTokenValue);
+                    const shortcuts = platform.shortcuts ?? [];
+                    const primaryTokenValue =
+                      shortcuts.length > 0
+                        ? (canonicalizeTokenType(shortcuts[0].tokenType) ??
+                          shortcuts[0].tokenType ??
+                          "Any")
+                        : (canonicalizeTokenType(platform.tokenType) ??
+                          platform.tokenType ??
+                          "Any");
+                    const activeTokens = parseChainSpec(primaryTokenValue);
                     const activeTokenSet = new Set(
                       activeTokens.map((token) =>
                         normalizeChainTokenKey(token),
@@ -1452,50 +1974,98 @@ function HomePage() {
                             </Button>
                           </div>
                         </div>
-                        <div className="grid gap-4 md:grid-cols-2">
-                          <div className="grid gap-2">
-                            <Label>
-                              {t("home.platformCard.tokenTypeLabel")}
-                            </Label>
-                            <Select
-                              value={inlineTokenValue}
-                              onValueChange={(value) =>
-                                handleTokenTypeChange(platform.id, value)
-                              }
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {inlineTokenOptions.map((token) => (
-                                  <SelectItem key={token} value={token}>
-                                    {token}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="grid gap-2">
-                            <Label htmlFor={`shortcut-inline-${platform.id}`}>
-                              {t("home.platformCard.shortcutLabel")}
-                            </Label>
-                            <Input
-                              id={`shortcut-inline-${platform.id}`}
-                              value={platform.shortcut}
-                              readOnly
-                              onFocus={handleShortcutFocus}
-                              onBlur={handleShortcutBlur}
-                              onKeyDown={(event) =>
-                                handleShortcutKeyDown(platform.id, event)
-                              }
-                            />
-                          </div>
+                        <div className="space-y-3">
+                          {shortcuts.map((shortcutEntry, shortcutIndex) => {
+                            const tokenOptions = buildTokenOptions(
+                              platform,
+                              shortcutEntry.tokenType,
+                            );
+                            const inlineShortcutToken =
+                              canonicalizeTokenType(shortcutEntry.tokenType) ??
+                              tokenOptions[0] ??
+                              "Any";
+                            const conflictNames =
+                              inlineShortcutConflicts
+                                .get(platform.id)
+                                ?.get(shortcutIndex) ?? null;
+                            const conflictHint =
+                              conflictNames && conflictNames.length > 0
+                                ? t("home.shortcutConflictHint", {
+                                    platforms: conflictNames.join("、"),
+                                  })
+                                : null;
+                            return (
+                              <div
+                                key={`${platform.id}-shortcut-${shortcutIndex}`}
+                                className="w/full grid gap-4 sm:grid-cols-2 sm:items-start"
+                              >
+                                <div className="flex flex-col gap-2">
+                                  <Label>
+                                    {t("home.platformCard.tokenTypeLabel")}
+                                  </Label>
+                                  <Select
+                                    value={inlineShortcutToken}
+                                    onValueChange={(value) =>
+                                      handleTokenTypeChange(
+                                        platform.id,
+                                        shortcutIndex,
+                                        value,
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {tokenOptions.map((token) => (
+                                        <SelectItem key={token} value={token}>
+                                          {token}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                  <Label
+                                    htmlFor={`shortcut-inline-${platform.id}-${shortcutIndex}`}
+                                  >
+                                    {t("home.platformCard.shortcutLabel")}
+                                  </Label>
+                                  <Input
+                                    id={`shortcut-inline-${platform.id}-${shortcutIndex}`}
+                                    value={shortcutEntry.shortcut}
+                                    readOnly
+                                    onFocus={handleShortcutFocus}
+                                    onBlur={handleShortcutBlur}
+                                    onKeyDown={(event) =>
+                                      handleShortcutKeyDown(
+                                        platform.id,
+                                        shortcutIndex,
+                                        event,
+                                      )
+                                    }
+                                    placeholder={t("home.shortcutPlaceholder")}
+                                    className={
+                                      shortcutEntry.shortcut?.trim()
+                                        ? "tracking-[0.15em]"
+                                        : undefined
+                                    }
+                                  />
+                                  {conflictHint ? (
+                                    <span className="text-muted-foreground/60 text-xs">
+                                      {conflictHint}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                         <div className="text-muted-foreground flex flex-col gap-1 text-xs">
                           {visibleUrls.map((entry, entryIndex) => {
                             const chainLabel = getChainDisplayLabel(
                               entry.chain,
-                              inlineTokenValue,
+                              primaryTokenValue,
                             );
                             return (
                               <span
@@ -1525,21 +2095,37 @@ function HomePage() {
                 <CardContent className="space-y-8">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
                     <div className="space-y-1 sm:w-1/2">
-                      <p className="text-primary text-sm font-semibold">
-                        {t("home.browserDelayTitle")}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-primary text-sm font-semibold">
+                          {t("home.browserDelayTitle")}
+                        </p>
+                        <span className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase">
+                          Pro
+                        </span>
+                      </div>
                       <p className="text-muted-foreground text-xs">
                         {t("home.browserDelayDescription")}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 sm:w-1/2 sm:justify-start">
-                      <Input
-                        value={`${browserDelay / 1000}s`}
-                        readOnly
-                        disabled
-                        className="w-24 text-center"
-                      />
-                      <Badge variant="secondary">{t("home.delayBadge")}</Badge>
+                      <InputGroup className="w-32">
+                        <InputGroupInput
+                          type="number"
+                          min={0}
+                          step={0.1}
+                          value={displayedDelaySeconds}
+                          onChange={handleBrowserDelayChange}
+                          disabled={!isPro}
+                          className="text-left"
+                          aria-label={t("home.browserDelayTitle")}
+                        />
+                        <InputGroupAddon align="inline-end">s</InputGroupAddon>
+                      </InputGroup>
+                      {!isPro ? (
+                        <Badge variant="secondary">
+                          {t("home.delayBadge")}
+                        </Badge>
+                      ) : null}
                     </div>
                   </div>
 
@@ -1569,9 +2155,14 @@ function HomePage() {
 
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
                     <div className="space-y-1 sm:w-1/2">
-                      <p className="text-primary text-sm font-semibold">
-                        {t("home.excludedAppsTitle")}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-primary text-sm font-semibold">
+                          {t("home.excludedAppsTitle")}
+                        </p>
+                        <span className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase">
+                          Pro
+                        </span>
+                      </div>
                       <p className="text-muted-foreground text-xs">
                         {t("home.excludedAppsDescription")}
                       </p>
@@ -1601,13 +2192,13 @@ function HomePage() {
                             <Badge
                               key={app}
                               variant="secondary"
-                              className="flex items-center gap-1 py-1 pl-2 pr-1"
+                              className="flex items-center gap-1 py-1 pr-1 pl-2"
                             >
                               <span className="text-xs">{app}</span>
                               <button
                                 type="button"
                                 onClick={() => handleRemoveExcludedApp(app)}
-                                className="text-muted-foreground transition-colors hover:text-foreground"
+                                className="text-muted-foreground hover:text-foreground transition-colors"
                                 aria-label={t("home.excludedAppsRemoveLabel", {
                                   app,
                                 })}
