@@ -13,6 +13,7 @@ import { getConfig, saveConfig } from "./config-store";
 import { executePlatforms } from "./platform-executor";
 import type {
   AppConfig,
+  AppConfigSavePayload,
   ExecutePlatformsRequest,
   ExecutePlatformsResponse,
   PlatformConfig,
@@ -741,12 +742,15 @@ export function addConfigEventListeners(
     return config;
   });
 
-  ipcMain.handle(CONFIG_SAVE_CHANNEL, (_event, rawConfig: AppConfig) => {
-    const saved = saveConfig(rawConfig);
+  ipcMain.handle(
+    CONFIG_SAVE_CHANNEL,
+    (_event, rawConfig: AppConfigSavePayload) => {
+      const saved = saveConfig(rawConfig);
     registerPlatformShortcuts(saved);
     options?.onConfigUpdated?.(saved);
     return;
-  });
+    },
+  );
 
   ipcMain.handle(
     PLATFORM_EXECUTE_CHANNEL,

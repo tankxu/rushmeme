@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   AlertCircle,
+  BadgeCheck,
   CheckCircle2,
   Loader2,
   Plus,
@@ -80,6 +81,19 @@ type ShortcutConflictMap = Map<string, Map<number, string[]>>;
 
 const MODIFIER_KEYS = new Set(["Meta", "Control", "Shift", "Alt"]);
 
+const SHIFTED_DIGIT_MAP: Record<string, string> = {
+  "!": "1",
+  "@": "2",
+  "#": "3",
+  $: "4",
+  "%": "5",
+  "^": "6",
+  "&": "7",
+  "*": "8",
+  "(": "9",
+  ")": "0",
+};
+
 function formatShortcutFromEvent(
   event: React.KeyboardEvent<HTMLInputElement>,
   labels: ShortcutLabels,
@@ -102,6 +116,10 @@ function formatShortcutFromEvent(
   let key = event.key;
   if (key === " ") {
     key = "Space";
+  }
+
+  if (event.shiftKey && key.length === 1) {
+    key = SHIFTED_DIGIT_MAP[key] ?? key;
   }
 
   const isModifierKey = MODIFIER_KEYS.has(key);
@@ -481,7 +499,7 @@ function buildTokenOptions(
 function clonePlatformForCustom(
   name: string,
   tokenType = "Any",
-  shortcutDisplay = "⌘⇧C",
+  shortcutDisplay = "",
   initiallyEnabled = true,
 ): PlatformConfig {
   const defaultUrl = "https://your-platform.com/token/{CA}";
@@ -798,8 +816,28 @@ function removePlatformShortcutEntry(
 
 function HomePage() {
   const { t } = useTranslation();
-  const defaultsRef = React.useRef(createDefaultAppConfig());
-  const licenseRef = React.useRef(defaultsRef.current.license);
+  const initialLicenseSnapshot =
+    typeof window !== "undefined"
+      ? (window.rushLicenseInitialState?.getSnapshot() ?? null)
+      : null;
+  const initialDefaults = React.useMemo(() => createDefaultAppConfig(), []);
+  const defaultsRef = React.useRef(initialDefaults);
+  const licenseRef = React.useRef(
+    initialLicenseSnapshot ?? defaultsRef.current.license,
+  );
+  const initialIsPro = (() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    const runtimeFlag = window.rushProRuntime?.getFlag?.();
+    if (runtimeFlag !== undefined) {
+      return Boolean(runtimeFlag);
+    }
+    if (initialLicenseSnapshot) {
+      return initialLicenseSnapshot.status === "active";
+    }
+    return window.rushLicenseInitialState?.isPro() ?? false;
+  })();
   const [platforms, setPlatforms] = React.useState<PlatformConfig[]>(
     defaultsRef.current.platforms.map(normalizePlatformForState),
   );
@@ -813,7 +851,7 @@ function HomePage() {
     defaultsRef.current.excludedApps,
   );
   const [excludedAppDraft, setExcludedAppDraft] = React.useState("");
-  const [isPro, setIsPro] = React.useState(false);
+  const [isPro, setIsPro] = React.useState(initialIsPro);
   const [loading, setLoading] = React.useState(true);
   const [status, setStatus] = React.useState<SaveStatus>("saved");
   const [statusVisible, setStatusVisible] = React.useState(false);
@@ -836,6 +874,10 @@ function HomePage() {
   const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(
     null,
   );
+  const [licenseHeartbeatError, setLicenseHeartbeatError] = React.useState<{
+    code: string;
+    message: string;
+  } | null>(null);
   const isMac = React.useMemo(() => isMacOS(), []);
   const shortcutLabels = React.useMemo(
     () => ({
@@ -876,7 +918,6 @@ function HomePage() {
     typeof window !== "undefined" ? window.rushConfig : undefined;
   const licenseApi =
     typeof window !== "undefined" ? window.rushLicense : undefined;
-  const defaultCustomShortcut = isMac ? "⌘⇧C" : "Ctrl + Shift + C";
 
   React.useEffect(() => {
     return () => {
@@ -901,7 +942,11 @@ function HomePage() {
     licenseApi
       .watch((snapshot) => {
         licenseRef.current = snapshot;
-        setIsPro(snapshot.status === "active");
+        const nextIsPro = snapshot.status === "active";
+        setIsPro(nextIsPro);
+        if (snapshot.status === "active") {
+          setLicenseHeartbeatError(null);
+        }
       })
       .then((unsubscribe) => {
         if (disposed) {
@@ -919,6 +964,20 @@ function HomePage() {
       if (stop) {
         stop();
       }
+    };
+  }, [licenseApi]);
+
+  React.useEffect(() => {
+    if (!licenseApi?.onHeartbeatError) {
+      return;
+    }
+
+    const unsubscribe = licenseApi.onHeartbeatError((details) => {
+      setLicenseHeartbeatError(details);
+    });
+
+    return () => {
+      unsubscribe?.();
     };
   }, [licenseApi]);
 
@@ -955,7 +1014,9 @@ function HomePage() {
           return;
         }
         hydrationRef.current = true;
-        setIsPro(Boolean(config.isPro));
+        if (config.isPro) {
+          setIsPro(true);
+        }
         setPlatforms(config.platforms.map(normalizePlatformForState));
         setBrowserDelay(config.browserDelayMs ?? DEFAULT_BROWSER_DELAY);
         // preserve license for saving
@@ -1004,7 +1065,6 @@ function HomePage() {
       },
       browserDelayMs: browserDelay,
       excludedApps,
-      license: licenseRef.current,
     };
 
     configApi
@@ -1336,8 +1396,8 @@ function HomePage() {
         const basePlatform = clonePlatformForCustom(
           t("home.customPlatformName"),
           "Any",
-          defaultCustomShortcut,
-          isPro,
+          "",
+          true,
         );
         const uniqueName = ensureUniquePlatformName(
           basePlatform.name,
@@ -1384,7 +1444,7 @@ function HomePage() {
       setEditingPlatformId(draft.id);
       setEditingPlatformDraft(draft);
     },
-    [defaultCustomShortcut, ensureUniquePlatformName, isPro, platforms, t],
+    [ensureUniquePlatformName, isPro, platforms, t],
   );
 
   const handleEditPlatform = React.useCallback((platform: PlatformConfig) => {
@@ -1444,6 +1504,35 @@ function HomePage() {
       return removePlatformShortcutEntry(previous, index);
     });
   }, []);
+
+  const handleLicenseHeartbeatDismiss = React.useCallback(() => {
+    setLicenseHeartbeatError(null);
+  }, []);
+
+  const handleRetryLicenseValidation = React.useCallback(async () => {
+    if (!licenseApi?.validate) {
+      return;
+    }
+
+    try {
+      const result = await licenseApi.validate();
+      if (result.success) {
+        setLicenseHeartbeatError(null);
+      } else {
+        setLicenseHeartbeatError({
+          code: result.code ?? "validation_failed",
+          message:
+            result.message ?? t("home.licenseErrorDialog.genericMessage"),
+        });
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : t("home.licenseErrorDialog.genericMessage");
+      setLicenseHeartbeatError({ code: "network_error", message });
+    }
+  }, [licenseApi, t]);
 
   const handleShortcutKeyDown = React.useCallback(
     (
@@ -1538,11 +1627,14 @@ function HomePage() {
         );
       }
       const uniqueName = ensureUniquePlatformName(nextPlatform.name, previous);
+      const enabledCount = previous.filter((platform) => platform.enabled).length;
+      const canEnableMore = isPro || enabledCount === 0;
       return [
         ...previous,
         {
           ...nextPlatform,
           name: uniqueName,
+          enabled: canEnableMore ? true : nextPlatform.enabled,
         },
       ];
     });
@@ -1552,6 +1644,7 @@ function HomePage() {
     editingPlatformId,
     ensureUniquePlatformName,
     handleDialogClose,
+    isPro,
   ]);
 
   const statusContent = {
@@ -1583,6 +1676,38 @@ function HomePage() {
           </div>
         </div>
       )}
+      <Dialog
+        open={Boolean(licenseHeartbeatError)}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleLicenseHeartbeatDismiss();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("home.licenseErrorDialog.title")}</DialogTitle>
+            <DialogDescription>
+              {t("home.licenseErrorDialog.description")}
+            </DialogDescription>
+          </DialogHeader>
+          {licenseHeartbeatError?.message ? (
+            <p className="text-destructive text-sm">
+              {licenseHeartbeatError.message}
+            </p>
+          ) : null}
+          <DialogFooter className="sm:flex-row sm:justify-end sm:gap-2">
+            <Button variant="outline" onClick={handleLicenseHeartbeatDismiss}>
+              {t("home.licenseErrorDialog.dismiss")}
+            </Button>
+            {licenseApi?.validate ? (
+              <Button onClick={handleRetryLicenseValidation}>
+                {t("home.licenseErrorDialog.retry")}
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={upgradeDialogOpen} onOpenChange={setUpgradeDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -1598,7 +1723,7 @@ function HomePage() {
               <Button variant="outline">{t("buttons.cancel")}</Button>
             </DialogClose>
             <Button asChild>
-              <Link to="/second" onClick={() => setUpgradeDialogOpen(false)}>
+              <Link to="/upgrade" onClick={() => setUpgradeDialogOpen(false)}>
                 {t("buttons.upgrade")}
               </Link>
             </Button>
@@ -1779,7 +1904,15 @@ function HomePage() {
                   })}
                 </div>
                 <p className="text-muted-foreground text-xs">
-                  {t("home.dialog.urlHint")}
+                  {t("home.dialog.urlHint", {
+                    placeholder:
+                      dialogPlatform?.variableType === "ANY" ? "{ANY}" : "{CA}",
+                    target: t(
+                      dialogPlatform?.variableType === "ANY"
+                        ? "home.dialog.urlHintTargetAny"
+                        : "home.dialog.urlHintTargetContract",
+                    ),
+                  })}
                 </p>
               </div>
             </div>
@@ -1858,20 +1991,29 @@ function HomePage() {
             <div className="flex items-center gap-2 self-end sm:self-auto">
               <LangToggle />
               <ToggleTheme />
-              <Button asChild variant="default">
-                <Link to="/second">{t("buttons.upgrade")}</Link>
+              <Button asChild variant="default" className="gap-2">
+                <Link to="/upgrade" className="flex items-center gap-2">
+                  {isPro ? (
+                    <>
+                      <BadgeCheck className="size-4" />
+                      <span>Pro</span>
+                    </>
+                  ) : (
+                    t("buttons.upgrade")
+                  )}
+                </Link>
               </Button>
             </div>
           </header>
 
           <section className="grid flex-1 gap-6 lg:grid-cols-[2fr,1fr]">
             <Card className="flex flex-col">
-              <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
+              <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
                 <CardTitle>{t("home.platformListTitle")}</CardTitle>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="sm">
-                      <Plus className="mr-2 size-4" />
+                      <Plus className="size-4" />
                       {t("home.addPlatform")}
                     </Button>
                   </DropdownMenuTrigger>
@@ -1912,12 +2054,23 @@ function HomePage() {
                         : (canonicalizeTokenType(platform.tokenType) ??
                           platform.tokenType ??
                           "Any");
-                    const activeTokens = parseChainSpec(primaryTokenValue);
-                    const activeTokenSet = new Set(
-                      activeTokens.map((token) =>
-                        normalizeChainTokenKey(token),
-                      ),
+                    const activeTokenSet = new Set<string>();
+                    const registerTokens = (spec?: string) => {
+                      parseChainSpec(spec ?? "")
+                        .map((token) => normalizeChainTokenKey(token))
+                        .filter(Boolean)
+                        .forEach((token) => activeTokenSet.add(token));
+                    };
+                    shortcuts.forEach((shortcutEntry) =>
+                      registerTokens(shortcutEntry.tokenType),
                     );
+                    registerTokens(primaryTokenValue);
+                    registerTokens(platform.tokenType);
+                    if (activeTokenSet.size === 0) {
+                      platform.urls.forEach((entry) =>
+                        registerTokens(entry.chain),
+                      );
+                    }
                     const showAllUrls =
                       activeTokenSet.size === 0 || activeTokenSet.has("any");
                     const visibleUrls = platform.urls.filter((entry) => {
@@ -1941,7 +2094,7 @@ function HomePage() {
                         key={platform.id}
                         className="border-border/60 bg-muted/40 hover:bg-muted/60 flex flex-col gap-4 rounded-xl border p-4 transition"
                       >
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex flex-row items-center justify-between gap-4">
                           <div className="space-y-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <h3 className="text-lg font-semibold">
@@ -1974,7 +2127,7 @@ function HomePage() {
                             </Button>
                           </div>
                         </div>
-                        <div className="space-y-3">
+                        <div className="space-y-5 sm:space-y-4">
                           {shortcuts.map((shortcutEntry, shortcutIndex) => {
                             const tokenOptions = buildTokenOptions(
                               platform,
@@ -2122,7 +2275,7 @@ function HomePage() {
                         <InputGroupAddon align="inline-end">s</InputGroupAddon>
                       </InputGroup>
                       {!isPro ? (
-                        <Badge variant="secondary">
+                        <Badge variant="secondary" className="py-1">
                           {t("home.delayBadge")}
                         </Badge>
                       ) : null}
@@ -2168,7 +2321,7 @@ function HomePage() {
                       </p>
                     </div>
                     <div className="space-y-3 sm:w-1/2">
-                      <div className="flex flex-col gap-2 sm:flex-row">
+                      <div className="flex flex-row gap-2">
                         <Input
                           value={excludedAppDraft}
                           onChange={(event) =>

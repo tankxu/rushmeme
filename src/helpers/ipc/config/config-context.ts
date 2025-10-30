@@ -1,3 +1,4 @@
+import { contextBridge, ipcRenderer } from "electron";
 import {
   CONFIG_GET_CHANNEL,
   CONFIG_SAVE_CHANNEL,
@@ -6,19 +7,17 @@ import {
   CONFIG_SHORTCUTS_ENABLE_CHANNEL,
 } from "./config-channels";
 import type {
-  AppConfig,
+  AppConfigSavePayload,
   ExecutePlatformsRequest,
   ExecutePlatformsResponse,
   RuntimeConfig,
 } from "@/types/config";
 
 export function exposeConfigContext() {
-  const { contextBridge, ipcRenderer } = window.require("electron");
-
   contextBridge.exposeInMainWorld("rushConfig", {
     getConfig: () =>
       ipcRenderer.invoke(CONFIG_GET_CHANNEL) as Promise<RuntimeConfig>,
-    saveConfig: (config: AppConfig) =>
+    saveConfig: (config: AppConfigSavePayload) =>
       ipcRenderer.invoke(CONFIG_SAVE_CHANNEL, config) as Promise<void>,
     executePlatforms: (payload?: ExecutePlatformsRequest) =>
       ipcRenderer.invoke(

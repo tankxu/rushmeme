@@ -1,6 +1,6 @@
 import { setTimeout as delay } from "timers/promises";
 
-const DEFAULT_BASE_URL = "https://license-worker.tankxu.workers.dev";
+const LICENSE_SERVICE_BASE_URL = "https://license-worker.tankxu.workers.dev";
 const API_PREFIX = "/v1";
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -112,8 +112,8 @@ export class LicenseApiClient {
   private readonly apiKey: string | null;
 
   constructor(options?: LicenseClientOptions) {
-    this.baseUrl = (options?.baseUrl ?? process.env.RUSHMEME_LICENSE_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
-    const apiKeyCandidate = options?.apiKey ?? process.env.RUSHMEME_LICENSE_API_KEY ?? null;
+    this.baseUrl = (options?.baseUrl ?? LICENSE_SERVICE_BASE_URL).replace(/\/+$/, "");
+    const apiKeyCandidate = options?.apiKey ?? null;
     this.apiKey = apiKeyCandidate ? apiKeyCandidate.trim() || null : null;
   }
 

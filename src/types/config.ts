@@ -17,6 +17,7 @@ export type PlatformTemplate = {
   requiresPro?: boolean;
   urls: PlatformUrlTemplate[];
   shortcuts: PlatformShortcutConfig[];
+  variableType?: "CA" | "ANY";
 };
 
 export type PlatformConfig = PlatformTemplate & {
@@ -66,6 +67,8 @@ export type AppConfig = {
 export type RuntimeConfig = AppConfig & {
   isPro: boolean;
 };
+
+export type AppConfigSavePayload = Omit<AppConfig, "license">;
 
 export type ExecutePlatformsRequest = {
   overrideAddress?: string;

@@ -9,12 +9,18 @@ import {
   installExtension,
   REACT_DEVELOPER_TOOLS,
 } from "electron-devtools-installer";
-import type { AppConfig, PlatformConfig, RuntimeConfig } from "@/types/config";
+import type {
+  AppConfig,
+  PlatformConfig,
+  PlatformShortcutConfig,
+  RuntimeConfig,
+} from "@/types/config";
 import { getConfig } from "@/helpers/ipc/config/config-store";
 import type { SupportedLocale } from "@/helpers/ipc/language/language-store";
 import { getPreferredLanguage } from "@/helpers/ipc/language/language-store";
 import { executePlatforms } from "@/helpers/ipc/config/platform-executor";
 import { getLicenseService } from "@/helpers/ipc/license/license-service";
+import { convertDisplayShortcutToAccelerator } from "@/utils/shortcut";
 
 const inDevelopment = process.env.NODE_ENV === "development";
 
@@ -25,17 +31,15 @@ const licenseService = getLicenseService();
 
 const TRAY_TRANSLATIONS: Record<
   SupportedLocale,
-  { showMain: string; exit: string; enabledPlatformsHeader: string }
+  { showMain: string; exit: string }
 > = {
   en: {
     showMain: "Show Main Window",
     exit: "Quit RushMeme",
-    enabledPlatformsHeader: "Enabled platforms",
   },
   "zh-CN": {
     showMain: "显示主界面",
     exit: "退出",
-    enabledPlatformsHeader: "（已开启的平台）",
   },
 };
 
@@ -71,10 +75,28 @@ function showMainWindow() {
   mainWindow.focus();
 }
 
-function formatPlatformLabel(platform: PlatformConfig): string {
-  const tokenType = platform.tokenType?.trim();
-  if (tokenType && !tokenType.toLowerCase().includes("any")) {
-    return `${platform.name} - ${platform.tokenType}`;
+function resolvePlatformShortcuts(
+  platform: PlatformConfig,
+): PlatformShortcutConfig[] {
+  if (Array.isArray(platform.shortcuts) && platform.shortcuts.length > 0) {
+    return platform.shortcuts;
+  }
+  return [
+    {
+      tokenType: platform.tokenType ?? "",
+      shortcut: platform.shortcut ?? "",
+      accelerator: platform.accelerator,
+    },
+  ];
+}
+
+function formatPlatformLabel(
+  platform: PlatformConfig,
+  tokenType?: string,
+): string {
+  const effectiveTokenType = (tokenType ?? platform.tokenType)?.trim();
+  if (effectiveTokenType && !effectiveTokenType.toLowerCase().includes("any")) {
+    return `${platform.name} - ${effectiveTokenType}`;
   }
   return platform.name;
 }
@@ -83,7 +105,7 @@ function shouldDisplayPlatform(platform: PlatformConfig): boolean {
   return Boolean(platform.enabled);
 }
 
-async function executePlatform(platformId: string) {
+async function executePlatform(platformId: string, shortcutIndex = 0) {
   try {
     const currentConfig = getConfig();
     const target = currentConfig.platforms.find(
@@ -93,9 +115,32 @@ async function executePlatform(platformId: string) {
       return;
     }
 
+    const shortcuts = resolvePlatformShortcuts(target);
+    const selectedShortcut = shortcuts[shortcutIndex] ?? shortcuts[0];
+    if (!selectedShortcut) {
+      return;
+    }
+
+    const resolvedAccelerator =
+      selectedShortcut.accelerator ??
+      convertDisplayShortcutToAccelerator(selectedShortcut.shortcut ?? "") ??
+      undefined;
+
+    const platformWithShortcut: PlatformConfig = {
+      ...target,
+      tokenType: selectedShortcut.tokenType ?? target.tokenType ?? "",
+      shortcut: selectedShortcut.shortcut ?? target.shortcut ?? "",
+      accelerator: resolvedAccelerator ?? target.accelerator,
+      shortcuts: shortcuts.map((entry, index) =>
+        index === shortcutIndex
+          ? { ...entry, accelerator: resolvedAccelerator }
+          : entry,
+      ),
+    };
+
     const platformOnlyConfig: AppConfig = {
       ...currentConfig,
-      platforms: [target],
+      platforms: [platformWithShortcut],
     };
 
     await executePlatforms(platformOnlyConfig);
@@ -124,20 +169,36 @@ function buildTrayMenuTemplate(
   ];
 
   if (enabledPlatforms.length > 0) {
-    template.push({
-      label: labels.enabledPlatformsHeader,
-      enabled: false,
-    });
+    const platformEntries: MenuItemConstructorOptions[] = [];
 
     for (const platform of enabledPlatforms) {
-      template.push({
-        label: formatPlatformLabel(platform),
-        click: () => {
-          void executePlatform(platform.id);
-        },
+      const shortcuts = resolvePlatformShortcuts(platform);
+      const seenTokenKeys = new Set<string>();
+      shortcuts.forEach((shortcutEntry, index) => {
+        const tokenKey =
+          shortcutEntry.tokenType?.trim().toLowerCase() ?? "__any__";
+        if (seenTokenKeys.has(tokenKey)) {
+          return;
+        }
+        seenTokenKeys.add(tokenKey);
+        const acceleratorNumber =
+          platformEntries.length < 9
+            ? `${platformEntries.length + 1}`
+            : undefined;
+        platformEntries.push({
+          label: formatPlatformLabel(platform, shortcutEntry.tokenType),
+          click: () => {
+            void executePlatform(platform.id, index);
+          },
+          accelerator: acceleratorNumber,
+        });
       });
     }
-    template.push({ type: "separator" });
+
+    if (platformEntries.length > 0) {
+      template.push(...platformEntries);
+      template.push({ type: "separator" });
+    }
   }
 
   template.push({
@@ -278,7 +339,7 @@ function createWindow() {
     webPreferences: {
       devTools: inDevelopment,
       contextIsolation: true,
-      nodeIntegration: true,
+      nodeIntegration: false,
       nodeIntegrationInSubFrames: false,
       preload: preload,
     },

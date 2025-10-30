@@ -342,6 +342,7 @@ export class LicenseService {
     this.initializing = true;
     try {
       this.snapshot = getLicenseSnapshot();
+      setProLicensed(isActiveStatus(this.snapshot.status));
       if (!this.snapshot.deviceId) {
         this.snapshot = updateLicenseSnapshot((current) => ({
           ...current,
@@ -350,7 +351,6 @@ export class LicenseService {
       }
 
       if (!this.snapshot.key) {
-        setProLicensed(false);
         this.emit("change", this.snapshot);
         return {
           success: false,
@@ -362,8 +362,12 @@ export class LicenseService {
       }
 
       if (this.snapshot.status === "active") {
-        const result = await this.validate({ reason: "startup", silent: true });
-        this.scheduleHeartbeatFromSnapshot(result?.snapshot ?? this.snapshot);
+        const result = await this.validate({ reason: "startup", silent: false });
+        if (result?.success) {
+          this.scheduleHeartbeatFromSnapshot(result.snapshot);
+        } else {
+          this.scheduleHeartbeat(HEARTBEAT_BACKOFF_STEPS_MS[0]);
+        }
         return result;
       }
 
@@ -371,9 +375,13 @@ export class LicenseService {
         deviceName: resolveDeviceName(),
         reason: "startup",
       });
-      this.scheduleHeartbeatFromSnapshot(
-        activationResult.snapshot ?? this.snapshot,
-      );
+      if (activationResult.success) {
+        this.scheduleHeartbeatFromSnapshot(
+          activationResult.snapshot ?? this.snapshot,
+        );
+      } else {
+        this.scheduleHeartbeat(HEARTBEAT_BACKOFF_STEPS_MS[0]);
+      }
       return activationResult;
     } finally {
       this.initializing = false;
@@ -502,14 +510,17 @@ export class LicenseService {
     const previousSnapshot = this.snapshot;
     if (!response.ok) {
       const errorStatus = ERROR_STATUS_MAP[response.code] ?? "error";
-      const nextStatus = response.retryable ? previousSnapshot.status : errorStatus;
+      const isNetworkFailure = response.code === "network_error" || response.status === 0;
+      const nextStatus = isNetworkFailure
+        ? "error"
+        : response.retryable
+          ? previousSnapshot.status
+          : errorStatus;
       const shouldDisablePro =
-        !response.retryable && !isActiveStatus(errorStatus);
+        isNetworkFailure || (!response.retryable && !isActiveStatus(errorStatus));
       const proOption = shouldDisablePro
         ? false
-        : response.retryable
-          ? undefined
-          : isActiveStatus(errorStatus);
+        : isActiveStatus(errorStatus);
       const nextSnapshot = this.updateSnapshot(
         (current) => ({
           ...current,
@@ -801,7 +812,7 @@ export class LicenseService {
       return;
     }
 
-    const result = await this.validate({ silent: true, reason: "heartbeat" });
+    const result = await this.validate({ silent: false, reason: "heartbeat" });
     if (result?.success) {
       const snapshot = result.snapshot;
       const nextCheckInAt =

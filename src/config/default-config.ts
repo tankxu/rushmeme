@@ -1,4 +1,4 @@
-import { PLATFORM_TEMPLATES, DEFAULT_BROWSER_DELAY } from "./platform-templates";
+import { PLATFORM_TEMPLATES } from "./platform-templates";
 import type { AppConfig, LicenseSnapshot, PlatformConfig } from "@/types/config";
 import { convertDisplayShortcutToAccelerator } from "@/utils/shortcut";
 import { extractChainSpecFromUrl, normalizeUrlTemplates } from "@/utils/chain";
@@ -12,16 +12,18 @@ function instantiatePlatformTemplate(
     throw new Error(`Unknown platform template: ${templateKey}`);
   }
 
-  const [primary] = template.shortcuts;
+  const sourceShortcuts = Array.isArray(template.shortcuts)
+    ? template.shortcuts
+    : [];
+  const [primary] = sourceShortcuts;
   const primaryTokenType = primary?.tokenType ?? "Any";
-  const primaryShortcut = primary?.shortcut ?? "";
 
   const normalizedUrls = normalizeUrlTemplates(
     template.urls,
     primaryTokenType,
   );
 
-  const shortcutsWithAccelerators = template.shortcuts.map((entry) => ({
+  const shortcutsWithAccelerators = sourceShortcuts.map((entry) => ({
     ...entry,
     accelerator:
       entry.accelerator ??
@@ -33,8 +35,8 @@ function instantiatePlatformTemplate(
     ...template,
     id: index === 0 ? template.key : `${template.key}-${index}`,
     tokenType: primaryTokenType,
-    shortcut: primaryShortcut,
-    accelerator: convertDisplayShortcutToAccelerator(primaryShortcut),
+    shortcut: primary?.shortcut ?? "",
+    accelerator: convertDisplayShortcutToAccelerator(primary?.shortcut ?? ""),
     shortcuts: shortcutsWithAccelerators,
     urls: normalizedUrls.map((entry) => ({
       ...entry,
@@ -83,7 +85,7 @@ export function createDefaultAppConfig(): AppConfig {
     notifications: {
       enabled: true,
     },
-    browserDelayMs: DEFAULT_BROWSER_DELAY,
+    browserDelayMs: 0,
     excludedApps: [],
     license: createDefaultLicenseSnapshot(),
   };

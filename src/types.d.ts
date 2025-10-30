@@ -3,6 +3,7 @@
 // whether you're running in development or production).
 import type {
   AppConfig,
+  AppConfigSavePayload,
   ExecutePlatformsRequest,
   ExecutePlatformsResponse,
   LicenseSnapshot,
@@ -44,7 +45,7 @@ declare global {
 
   interface RushConfigContext {
     getConfig: () => Promise<RuntimeConfig>;
-    saveConfig: (config: AppConfig) => Promise<void>;
+    saveConfig: (config: AppConfigSavePayload) => Promise<void>;
     executePlatforms: (
       payload?: ExecutePlatformsRequest,
     ) => Promise<ExecutePlatformsResponse>;
@@ -67,6 +68,9 @@ declare global {
     watch: (
       listener: (snapshot: LicenseSnapshot) => void,
     ) => Promise<() => void>;
+    onHeartbeatError: (
+      listener: (details: { code: string; message: string }) => void,
+    ) => () => void;
   }
 
   interface Window {
@@ -76,5 +80,13 @@ declare global {
     rushConfig: RushConfigContext;
     rushLanguage: RushLanguageContext;
     rushLicense: RushLicenseContext;
+    rushLicenseInitialState: {
+      getSnapshot: () => LicenseSnapshot | null;
+      isPro: () => boolean;
+    };
+    rushProRuntime?: {
+      getFlag?: () => boolean | undefined;
+    };
+    __RUSHMEME_RENDERER_PRO__?: boolean;
   }
 }

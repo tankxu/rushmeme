@@ -20,7 +20,7 @@ import { CheckCircle2, ArrowLeft, Loader2 } from "lucide-react";
 import type { LicenseSnapshot } from "@/types/config";
 
 function SecondPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const features = t("pro.featuresList", {
     returnObjects: true,
   }) as string[];
@@ -60,7 +60,7 @@ function SecondPage() {
       .watch((snapshot) => {
         setLicense(snapshot);
         setSerialKey((previous) =>
-          previous.trim().length > 0 ? previous : snapshot.key ?? "",
+          previous.trim().length > 0 ? previous : (snapshot.key ?? ""),
         );
         setError(null);
       })
@@ -198,15 +198,37 @@ function SecondPage() {
     [error],
   );
 
+  const serialHelperMessage = React.useMemo(() => {
+    if (isActive) {
+      const messages = [t("pro.serialSuccess")];
+      const expiresAt = license?.expiresAt;
+      if (expiresAt) {
+        const timestamp = Date.parse(expiresAt);
+        if (!Number.isNaN(timestamp)) {
+          const formatted = new Intl.DateTimeFormat(i18n.language, {
+            dateStyle: "medium",
+          }).format(new Date(timestamp));
+          messages.push(t("pro.serialDate", { date: formatted }));
+        } else {
+          messages.push(t("pro.serialDataForever"));
+        }
+      } else {
+        messages.push(t("pro.serialDataForever"));
+      }
+      return messages.join(" ");
+    }
+    return t("pro.serialHelper");
+  }, [i18n.language, isActive, license?.expiresAt, t]);
+
   return (
     <div className="bg-muted dark:bg-primary-foreground flex h-full flex-col overflow-hidden">
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto flex h-full max-w-3xl flex-col gap-6 p-6 pb-24">
+        <div className="mx-auto flex max-w-3xl flex-col gap-6 p-10">
           <header className="flex flex-col gap-6">
             <div className="flex items-center justify-between">
-              <Button variant="ghost" asChild>
+              <Button variant="ghost" className="!pl-0" asChild>
                 <Link to="/">
-                  <ArrowLeft className="mr-2 size-4" />
+                  <ArrowLeft className="mr-1 size-[18px]" />
                   {t("titleHomePage")}
                 </Link>
               </Button>
@@ -216,7 +238,7 @@ function SecondPage() {
               </div>
             </div>
             <div className="space-y-3">
-              <Badge variant="secondary" className="uppercase">
+              <Badge variant="secondary" className="border-border uppercase">
                 Pro • Lifetime
               </Badge>
               <div className="space-y-2">
@@ -258,7 +280,7 @@ function SecondPage() {
             <CardFooter className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:gap-4">
               <Button className="flex-1">{t("pro.actions.purchase")}</Button>
               <Button variant="outline" className="flex-1" asChild>
-                <a href="mailto:pro@rushmeme.app">pro@rushmeme.app</a>
+                <a href="mailto:support@rushmeme.vip">support@rushmeme.vip</a>
               </Button>
             </CardFooter>
           </Card>
@@ -270,7 +292,6 @@ function SecondPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-2">
-                <Label htmlFor="serial-key">{t("pro.serialTitle")}</Label>
                 <Input
                   id="serial-key"
                   value={serialKey}
@@ -279,8 +300,10 @@ function SecondPage() {
                   disabled={isActive || actionPending}
                 />
               </div>
-              <p className="text-muted-foreground text-xs">
-                {t("pro.serialHelper")}
+              <p
+                className={`text-xs ${isActive ? "text-brand font-medium" : "text-muted-foreground"}`}
+              >
+                {serialHelperMessage}
               </p>
             </CardContent>
             <CardFooter>
@@ -290,8 +313,11 @@ function SecondPage() {
                 disabled={
                   actionPending || (!isActive && serialKey.trim().length === 0)
                 }
+                variant={isActive ? "outline" : "default"}
               >
-                {actionPending && <Loader2 className="mr-2 size-4 animate-spin" />}
+                {actionPending && (
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                )}
                 {isActive
                   ? t("pro.actions.removeDevice")
                   : t("pro.actions.redeem")}
@@ -305,20 +331,23 @@ function SecondPage() {
           <Card>
             <CardHeader>
               <CardTitle>{t("pro.supportTitle")}</CardTitle>
-              <CardDescription>{t("pro.supportDescription")}</CardDescription>
             </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground text-sm">
+                {t("pro.supportDescription")}
+              </p>
+            </CardContent>
           </Card>
-        </div>
-      </div>
-      <div className="border-border/80 bg-muted border-t px-6 py-4">
-        <div className="mx-auto flex max-w-3xl items-center justify-between">
-          <Footer />
+
+          <div className="border-border/70 mt-1">
+            <Footer />
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-export const Route = createFileRoute("/second")({
+export const Route = createFileRoute("/upgrade")({
   component: SecondPage,
 });

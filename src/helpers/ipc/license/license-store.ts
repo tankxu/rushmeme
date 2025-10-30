@@ -1,6 +1,7 @@
 import { app } from "electron";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
+import { createHash, randomBytes } from "crypto";
 import type { LicenseSnapshot } from "@/types/config";
 import { createDefaultLicenseSnapshot } from "@/config/default-config";
 import { getDeviceFingerprint } from "@/helpers/device-fingerprint";
@@ -18,6 +19,11 @@ const LICENSE_STATUSES = new Set<LicenseSnapshot["status"]>([
 ]);
 
 type StoredLicenseSnapshot = Omit<LicenseSnapshot, "deviceId">;
+
+type PersistedLicensePayload = {
+  data: StoredLicenseSnapshot;
+  signature: string;
+};
 
 function createDefaultStoredSnapshot(): StoredLicenseSnapshot {
   const defaults = createDefaultLicenseSnapshot();
@@ -40,6 +46,57 @@ function getLicenseFilePath(): string {
   return join(userData, "license.dat");
 }
 
+function getLicenseSecretPath(): string {
+  const userData = app.getPath("userData");
+  return join(userData, "license.secret");
+}
+
+let cachedSecret: string | null = null;
+
+function getPersistenceSecret(): string {
+  if (cachedSecret) {
+    return cachedSecret;
+  }
+
+  const secretPath = getLicenseSecretPath();
+  if (existsSync(secretPath)) {
+    try {
+      const existing = readFileSync(secretPath, "utf8").trim();
+      if (existing.length >= 32) {
+        cachedSecret = existing;
+        return cachedSecret;
+      }
+    } catch {
+      // fall through to regenerate
+    }
+  }
+
+  const generated = randomBytes(32).toString("hex");
+  ensureDirectory(secretPath);
+  try {
+    writeFileSync(secretPath, generated, { encoding: "utf8", mode: 0o600, flag: "w" });
+  } catch {
+    // ignore errors; fallback to in-memory secret
+  }
+  cachedSecret = generated;
+  return cachedSecret;
+}
+
+function computeSnapshotSignature(snapshot: StoredLicenseSnapshot): string {
+  const secret = getPersistenceSecret();
+  const hash = createHash("sha256");
+  hash.update(secret);
+  const orderedKeys = Object.keys(snapshot).sort();
+  hash.update(
+    "|" +
+      JSON.stringify(
+        snapshot,
+        orderedKeys,
+      ),
+  );
+  return hash.digest("hex");
+}
+
 function readStoredLicense(): StoredLicenseSnapshot | null {
   const filePath = getLicenseFilePath();
   if (!existsSync(filePath)) {
@@ -48,8 +105,41 @@ function readStoredLicense(): StoredLicenseSnapshot | null {
 
   try {
     const raw = readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw) as Partial<StoredLicenseSnapshot>;
-    return normalizePersistedSnapshot(parsed);
+    const parsed = JSON.parse(raw) as
+      | PersistedLicensePayload
+      | Partial<StoredLicenseSnapshot>;
+
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "data" in parsed &&
+      parsed.data &&
+      typeof parsed.signature === "string"
+    ) {
+      const candidate = normalizePersistedSnapshot(parsed.data);
+      if (!candidate) {
+        return null;
+      }
+      const expected = computeSnapshotSignature(candidate);
+      if (parsed.signature !== expected) {
+        console.warn("[rushmeme] license snapshot signature mismatch; ignoring stored data");
+        return null;
+      }
+      return candidate;
+    }
+
+    const candidate = normalizePersistedSnapshot(parsed as Partial<StoredLicenseSnapshot>);
+    if (!candidate) {
+      return null;
+    }
+    const signature = computeSnapshotSignature(candidate);
+    try {
+      ensureDirectory(filePath);
+      writeFileSync(filePath, JSON.stringify({ data: candidate, signature }, null, 2), "utf8");
+    } catch {
+      // ignore
+    }
+    return candidate;
   } catch (error) {
     console.warn("[rushmeme] Failed to read license snapshot, treating as missing:", error);
     try {
@@ -131,13 +221,8 @@ function ensureDirectory(filePath: string) {
   mkdirSync(directory, { recursive: true });
 }
 
-function serializeForPersistence(snapshot: LicenseSnapshot): StoredLicenseSnapshot {
-  const { deviceId: _ignored, ...rest } = snapshot;
-  return rest;
-}
-
 function shouldPersist(snapshot: StoredLicenseSnapshot): boolean {
-  return Boolean(snapshot.key) && snapshot.status === "active";
+  return Boolean(snapshot.key);
 }
 
 function normalizeRuntimeSnapshot(
@@ -169,12 +254,12 @@ export function getLicenseSnapshot(): LicenseSnapshot {
 export function setLicenseSnapshot(
   snapshot: LicenseSnapshot,
 ): LicenseSnapshot {
-  const candidateStored = normalizePersistedSnapshot(serializeForPersistence(snapshot));
+  const { deviceId: _ignored, ...rest } = snapshot;
+  const candidateStored = normalizePersistedSnapshot(rest);
   const normalized = normalizeRuntimeSnapshot(candidateStored);
-  const persisted = candidateStored;
   const filePath = getLicenseFilePath();
 
-  if (!persisted || !shouldPersist(persisted)) {
+  if (!candidateStored || !shouldPersist(candidateStored)) {
     if (existsSync(filePath)) {
       try {
         unlinkSync(filePath);
@@ -187,7 +272,11 @@ export function setLicenseSnapshot(
 
   ensureDirectory(filePath);
   try {
-    writeFileSync(filePath, JSON.stringify(persisted, null, 2), "utf8");
+    const payload: PersistedLicensePayload = {
+      data: candidateStored,
+      signature: computeSnapshotSignature(candidateStored),
+    };
+    writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
   } catch (error) {
     console.error("[rushmeme] Failed to write license snapshot:", error);
   }

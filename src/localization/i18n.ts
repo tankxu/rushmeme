@@ -29,7 +29,7 @@ i18n.use(initReactI18next).init({
             "Select any contract address and open your trading platform instantly. Stay one step ahead, strike first.",
           platformListTitle: "Platform shortcuts",
           platformListDescription:
-            "Enable and organize the destinations RushMeme launches after it captures a contract address.",
+            "Enable and organize the destinations Rush Meme launches after it captures a contract address.",
           addPlatform: "Add platform",
           templatesLabel: "Preset platforms",
           customPlatform: "Custom platform…",
@@ -46,11 +46,11 @@ i18n.use(initReactI18next).init({
           delayBadge: "Instant for Pro",
           notificationsTitle: "Notifications",
           notificationsDescription:
-            "Decide when RushMeme should display OS notifications after an execution attempt.",
+            "Decide when Rush Meme should display OS notifications after an execution attempt.",
           notificationsToggleLabel: "Show notifications",
           excludedAppsTitle: "Excluded applications",
           excludedAppsDescription:
-            "Skip RushMeme when these apps are the active window. Matches are case-insensitive.",
+            "Skip Rush Meme when these apps are the active window. Matches are case-insensitive.",
           excludedAppsPlaceholder: "App name or bundle identifier…",
           excludedAppsAddButton: "Add",
           excludedAppsEmpty: "No apps excluded yet.",
@@ -74,7 +74,7 @@ i18n.use(initReactI18next).init({
           },
           dialog: {
             title: "Platform settings",
-            description: "Fine-tune how RushMeme handles {{platform}}.",
+            description: "Fine-tune how Rush Meme handles {{platform}}.",
             name: "Platform name",
             tokenType: "Token type",
             shortcut: "Shortcut",
@@ -82,7 +82,9 @@ i18n.use(initReactI18next).init({
             urlTemplates: "URL templates by chain",
             toggle: "Enable platform",
             removeTokenType: "Remove token type",
-            urlHint: "Use {CA} where the contract address should appear.",
+            urlHint: "Use {{placeholder}} where the {{target}} should appear.",
+            urlHintTargetContract: "contract address",
+            urlHintTargetAny: "selected text",
             cancel: "Cancel",
             save: "Save changes",
             addTokenType: "+ Add token type",
@@ -96,37 +98,47 @@ i18n.use(initReactI18next).init({
             multiPlatform: {
               title: "Upgrade to launch more platforms",
               description:
-                "Free plan opens one platform at a time. Go Pro to launch multiple destinations instantly.",
+                "Free plan opens one platform at a time. Go Pro to launch multiple platforms together with zero wait.",
             },
             advancedConfig: {
               title: "Upgrade to unlock advanced configuration",
               description:
-                "Add multiple token types, manage excluded apps, and remove launch delays with RushMeme Pro.",
+                "Go Pro to add more token types, manage excluded apps, and remove launch delays altogether.",
             },
+          },
+          licenseErrorDialog: {
+            title: "License validation failed",
+            description:
+              "Rush Meme could not reach the license server. Restore your connection and retry to keep Pro features active.",
+            retry: "Retry validation",
+            dismiss: "Dismiss",
+            genericMessage: "Unable to validate the license right now.",
           },
         },
         pro: {
-          heading: "Upgrade to RushMeme Pro",
+          heading: "Upgrade to Rush Meme Pro",
           subtitle:
-            "Unlock zero-delay launches, unlimited templates, and priority support for desks that move fast.",
+            "Unlock zero-delay launches, unlimited templates, and priority support so your desk moves faster.",
           priceLabel: "Launch price",
-          priceValue: "0.01 BNB / lifetime license",
+          priceValue: "16 USDT / limited lifetime license",
           devicesInfo:
-            "Each serial supports 2 devices. Manage activations inside RushMeme.",
+            "Includes future feature updates. Each key activates 1 device.",
           featuresTitle: "Everything in Pro",
           featuresList: [
             "Zero-delay browser launches",
             "Launch unlimited platforms at once",
-            "Unlimited platform templates & custom fields",
-            "Clipboard validation with advanced heuristics",
+            "Configure excluded apps",
             "Priority support within 24 hours",
-            "Early access to workflow automation",
+            "Early access to the latest features",
           ],
           serialTitle: "Have a serial key?",
           serialDescription: "Enter your key to activate Pro instantly.",
           serialPlaceholder: "XXXX-XXXX-XXXX-XXXX",
           serialHelper:
             "We’ll validate the key online. Make sure you’re connected.",
+          serialSuccess: "Pro activated!",
+          serialDate: "Your Pro license is valid until {{date}}.",
+          serialDataForever: "Your Pro license is lifetime.",
           actions: {
             purchase: "Purchase license",
             redeem: "Activate Pro",
@@ -134,7 +146,7 @@ i18n.use(initReactI18next).init({
           },
           supportTitle: "Need another payment method?",
           supportDescription:
-            "Ping us via Telegram @RushMeme or email pro@rushmeme.app. We accept USDT, TON, and wire transfers.",
+            "We default to crypto payments. Need something else? Email support@rush meme.vip — we accept PayPal, bank transfer, Alipay, WeChat Pay, and PromptPay.",
           serialRequired: "Enter your license key to activate.",
           errors: {
             unavailable: "Activation service unavailable.",
@@ -172,7 +184,7 @@ i18n.use(initReactI18next).init({
             "一键选中合约地址，瞬间打开交易平台，让你快人一步，抢先出击。",
           platformListTitle: "平台快捷方式",
           platformListDescription:
-            "配置 RushMeme 捕获合约地址后要打开的平台，并调整它们的呈现方式。",
+            "配置 Rush Meme 捕获合约地址后要打开的平台，并调整它们的呈现方式。",
           addPlatform: "添加平台",
           templatesLabel: "内置模板",
           customPlatform: "自定义平台…",
@@ -180,18 +192,18 @@ i18n.use(initReactI18next).init({
           emptyPlatformsMessage: "尚未配置任何平台，请点击上方按钮添加。",
           executionCardTitle: "偏好设置",
           executionCardDescription:
-            "设定标签页的启动延时，并决定 RushMeme 何时提醒团队。",
+            "设定标签页的启动延时，并决定 Rush Meme 何时提醒团队。",
           browserDelayTitle: "浏览器启动延时",
           browserDelayDescription:
             "为打开浏览器标签设置延时。免费用户需等待计时完成，升级 Pro 后即可立刻打开。",
           browserDelayValue: "当前延时 {{value}} 毫秒",
-          delayBadge: "升级 Pro 可享0延时启动",
+          delayBadge: "升级 Pro 享 0 延时",
           notificationsTitle: "通知提醒",
           notificationsDescription: "选择在执行成功或失败时是否展示系统通知。",
           notificationsToggleLabel: "开启系统通知",
-          excludedAppsTitle: "排除应用",
+          excludedAppsTitle: "忽略应用",
           excludedAppsDescription:
-            "当前窗口属于以下应用时，RushMeme 将忽略快捷键（不区分大小写）。",
+            "当前窗口属于以下应用时，Rush Meme 将忽略快捷键（不区分大小写）。",
           excludedAppsPlaceholder: "应用名称或 Bundle ID…",
           excludedAppsAddButton: "添加",
           excludedAppsEmpty: "尚未排除任何应用。",
@@ -215,7 +227,7 @@ i18n.use(initReactI18next).init({
           },
           dialog: {
             title: "平台设置",
-            description: "调整 RushMeme 处理 {{platform}} 的方式。",
+            description: "调整 Rush Meme 处理 {{platform}} 的方式。",
             name: "平台名称",
             tokenType: "代币类型",
             shortcut: "快捷键",
@@ -223,7 +235,9 @@ i18n.use(initReactI18next).init({
             urlTemplates: "不同链路的 URL 模板",
             toggle: "启用该平台",
             removeTokenType: "移除该代币类型",
-            urlHint: "请在需要填入合约地址的位置使用 {CA}。",
+            urlHint: "请在需要填入{{target}}的位置使用 {{placeholder}}。",
+            urlHintTargetContract: "合约地址",
+            urlHintTargetAny: "选中文本",
             cancel: "取消",
             save: "保存修改",
             addTokenType: "+ 添加 token type",
@@ -245,27 +259,37 @@ i18n.use(initReactI18next).init({
                 "升级 Pro 后即可新增更多 token 类型、管理排除应用，并享受零延时启动。",
             },
           },
+          licenseErrorDialog: {
+            title: "授权验证失败",
+            description:
+              "Rush Meme 无法连接授权服务器，请检查网络或稍后再试，以继续使用 Pro 功能。",
+            retry: "重新验证",
+            dismiss: "稍后再试",
+            genericMessage: "当前无法验证授权。",
+          },
         },
         pro: {
-          heading: "升级 RushMeme Pro",
+          heading: "升级 Rush Meme Pro",
           subtitle:
-            "解锁零延时打开、多平台模板和优先客服，帮助高频交易团队更快完成验证。",
+            "解锁零延时打开、多平台模板和优先客服，以最快的速度开始交易。",
           priceLabel: "首发价格",
-          priceValue: "0.01 BNB / 永久授权",
-          devicesInfo: "每个序列号可绑定 2 台设备，可在 RushMeme 中管理。",
+          priceValue: "16 USDT / 限时永久授权",
+          devicesInfo: "包含后续功能更新，每个序列号可绑定 1 台设备。",
           featuresTitle: "Pro 版本包含",
           featuresList: [
             "零延时浏览器启动体验",
             "支持同时开启不限数量的平台",
-            "无限平台模板与自定义字段",
-            "高级剪贴板校验与格式识别",
+            "设置忽略应用列表",
             "24 小时内优先客服响应",
-            "抢先体验自动化工作流功能",
+            "抢先体验最新功能",
           ],
           serialTitle: "已有序列号？",
           serialDescription: "输入序列号即可立即激活 Pro 功能。",
           serialPlaceholder: "XXXX-XXXX-XXXX-XXXX",
           serialHelper: "激活时需要联网，请确保网络可用。",
+          serialSuccess: "激活成功！",
+          serialDate: "您的 Pro 授权有效期至 {{date}}。",
+          serialDataForever: "您的 Pro 授权为永久授权。",
           actions: {
             purchase: "购买授权",
             redeem: "立即激活",
@@ -273,7 +297,7 @@ i18n.use(initReactI18next).init({
           },
           supportTitle: "需要其他支付方式？",
           supportDescription:
-            "欢迎通过 Telegram @RushMeme 或发送邮件到 pro@rushmeme.app；支持 USDT、TON 以及银行转账。",
+            "默认使用加密货币支持，如需其它支付方式，欢迎邮件联系 support@rush meme.vip。支持 PayPal、银行卡转账、支付宝、微信支付、PromptPay。",
           serialRequired: "请输入授权序列号后再激活。",
           errors: {
             unavailable: "激活服务暂不可用。",

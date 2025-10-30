@@ -5,3 +5,5 @@ export const LICENSE_DEACTIVATE_CHANNEL = "license:deactivate";
 export const LICENSE_FETCH_ACTIVATIONS_CHANNEL = "license:fetchActivations";
 export const LICENSE_WATCH_CHANNEL = "license:watch";
 export const LICENSE_UPDATED_EVENT_CHANNEL = "license:updated";
+export const LICENSE_HEARTBEAT_ERROR_EVENT_CHANNEL = "license:heartbeatError";
+export const LICENSE_GET_CACHED_STATUS_CHANNEL = "license:getCachedStatus";

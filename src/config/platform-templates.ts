@@ -32,8 +32,12 @@ export const PLATFORM_TEMPLATES: PlatformTemplate[] = [
     enabled: false,
     shortcuts: [
       {
-        tokenType: "BSC | Solana",
+        tokenType: "Solana",
         shortcut: "⌃1",
+      },
+      {
+        tokenType: "Base",
+        shortcut: "⌃2",
       },
     ],
     urls: [
@@ -54,18 +58,6 @@ export const PLATFORM_TEMPLATES: PlatformTemplate[] = [
     ],
   },
   {
-    key: "dexscreener",
-    name: "DexScreener",
-    enabled: false,
-    shortcuts: [
-      {
-        tokenType: "Any",
-        shortcut: "⌃2",
-      },
-    ],
-    urls: [{ chain: "any", url: "https://dexscreener.com/?token={CA}" }],
-  },
-  {
     key: "gmgn",
     name: "GMGN",
     enabled: false,
@@ -78,18 +70,51 @@ export const PLATFORM_TEMPLATES: PlatformTemplate[] = [
     urls: [
       {
         chain: "base",
-        url: "https://gmgn.ai/token/base/{CA}",
+        url: "https://gmgn.ai/base/token/{CA}",
       },
       {
         chain: "solana",
-        url: "https://gmgn.ai/token/solana/{CA}",
+        url: "https://gmgn.ai/solana/token/{CA}",
       },
+      {
+        chain: "bsc",
+        url: "https://gmgn.ai/bsc/token/{CA}",
+      },
+      {
+        chain: "eth",
+        url: "https://gmgn.ai/eth/token/{CA}",
+      },
+      {
+        chain: "tron",
+        url: "https://gmgn.ai/tron/token/{CA}",
+      },
+    ],
+  },
+  {
+    key: "dexscreener",
+    name: "DexScreener",
+    enabled: false,
+    shortcuts: [
+      {
+        tokenType: "Solana",
+        shortcut: "",
+      },
+    ],
+    urls: [
+      { chain: "solana", url: "https://dexscreener.com/solana/{CA}" },
+      { chain: "bsc", url: "https://dexscreener.com/bsc/{CA}" },
+      { chain: "base", url: "https://dexscreener.com/base/{CA}" },
+      { chain: "eth", url: "https://dexscreener.com/ethereum/{CA}" },
+      { chain: "sui", url: "https://dexscreener.com/sui/{CA}" },
+      { chain: "mantle", url: "https://dexscreener.com/mantle/{CA}" },
+      { chain: "tron", url: "https://dexscreener.com/tron/{CA}" },
     ],
   },
   {
     key: "raydium",
     name: "Raydium",
     enabled: false,
+    catalogOnly: true,
     shortcuts: [
       {
         tokenType: "Solana",
@@ -174,9 +199,29 @@ export const PLATFORM_TEMPLATES: PlatformTemplate[] = [
     urls: [
       {
         chain: "any",
-        url: "https://x.com/search?q={CA}",
+        url: "https://x.com/search?q={ANY}",
       },
     ],
+    variableType: "ANY",
+  },
+  {
+    key: "oklink",
+    name: "OKLink Multi Search",
+    enabled: false,
+    catalogOnly: true,
+    shortcuts: [
+      {
+        tokenType: "Any",
+        shortcut: "",
+      },
+    ],
+    urls: [
+      {
+        chain: "any",
+        url: "https://www.oklink.com/multi-search#key={ANY}",
+      },
+    ],
+    variableType: "ANY",
   },
 ];
 

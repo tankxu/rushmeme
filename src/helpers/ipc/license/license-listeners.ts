@@ -8,6 +8,8 @@ import {
   LICENSE_UPDATED_EVENT_CHANNEL,
   LICENSE_VALIDATE_CHANNEL,
   LICENSE_WATCH_CHANNEL,
+  LICENSE_HEARTBEAT_ERROR_EVENT_CHANNEL,
+  LICENSE_GET_CACHED_STATUS_CHANNEL,
 } from "./license-channels";
 import { getLicenseService } from "./license-service";
 
@@ -21,6 +23,17 @@ function broadcastSnapshot(snapshot: LicenseSnapshot) {
       continue;
     }
     contents.send(LICENSE_UPDATED_EVENT_CHANNEL, snapshot);
+  }
+}
+
+function broadcastHeartbeatError(details: { code: string; message: string }) {
+  for (const id of Array.from(subscribers)) {
+    const contents = webContents.fromId(id);
+    if (!contents || contents.isDestroyed()) {
+      subscribers.delete(id);
+      continue;
+    }
+    contents.send(LICENSE_HEARTBEAT_ERROR_EVENT_CHANNEL, details);
   }
 }
 
@@ -41,8 +54,17 @@ export function addLicenseEventListeners() {
     service.fetchActivationSummary(),
   );
 
+  ipcMain.on(LICENSE_GET_CACHED_STATUS_CHANNEL, (event) => {
+    event.returnValue = service.getSnapshot();
+  });
+
   ipcMain.handle(LICENSE_WATCH_CHANNEL, (event) => {
     const contentsId = event.sender.id;
+    try {
+      event.sender.setMaxListeners?.(0);
+    } catch (error) {
+      console.warn("[rushmeme] failed to adjust max listeners for webContents", error);
+    }
     subscribers.add(contentsId);
     event.sender.once("destroyed", () => {
       subscribers.delete(contentsId);
@@ -51,4 +73,5 @@ export function addLicenseEventListeners() {
   });
 
   service.on("change", broadcastSnapshot);
+  service.on("heartbeat-error", broadcastHeartbeatError);
 }

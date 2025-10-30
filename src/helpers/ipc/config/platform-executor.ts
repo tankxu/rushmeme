@@ -60,7 +60,10 @@ async function getActiveApplicationMac(): Promise<ActiveApplicationInfo | null> 
       executable: name ? `${name}.app` : undefined,
     };
   } catch (error) {
-    console.warn("[rushmeme] failed to resolve frontmost macOS application:", error);
+    console.warn(
+      "[rushmeme] failed to resolve frontmost macOS application:",
+      error,
+    );
     return null;
   }
 }
@@ -123,7 +126,10 @@ try {
       executable: executable || undefined,
     };
   } catch (error) {
-    console.warn("[rushmeme] failed to resolve foreground Windows application:", error);
+    console.warn(
+      "[rushmeme] failed to resolve foreground Windows application:",
+      error,
+    );
     return null;
   }
 }
@@ -138,7 +144,9 @@ async function getActiveApplication(): Promise<ActiveApplicationInfo | null> {
   return null;
 }
 
-function collectApplicationCandidates(info: ActiveApplicationInfo | null): string[] {
+function collectApplicationCandidates(
+  info: ActiveApplicationInfo | null,
+): string[] {
   if (!info) {
     return [];
   }
@@ -168,7 +176,9 @@ type NormalizedExcludedEntry = {
   length: number;
 };
 
-function normalizeExcludedEntries(entries: string[]): NormalizedExcludedEntry[] {
+function normalizeExcludedEntries(
+  entries: string[],
+): NormalizedExcludedEntry[] {
   const seen = new Set<string>();
   const normalized: NormalizedExcludedEntry[] = [];
 
@@ -338,7 +348,7 @@ async function captureSelectedText(): Promise<{
     return { captured: false, original };
   }
 
-  const timeoutMs = 1500;
+  const timeoutMs = 500;
   const intervalMs = 25;
   const started = Date.now();
 
@@ -436,7 +446,14 @@ function buildPlatformUrls(
         entry.chain,
         addressType,
       );
-      return resolvedUrl.replace("{CA}", encodeURIComponent(address));
+      switch (platform.variableType) {
+        case "ANY":
+          return resolvedUrl.replace("{ANY}", encodeURIComponent(address));
+          break;
+        default:
+          return resolvedUrl.replace("{CA}", encodeURIComponent(address));
+          break;
+      }
     })
     .filter(Boolean);
 }
@@ -462,7 +479,8 @@ export async function executePlatforms(
         return {
           success: false,
           opened,
-          error: "Execution skipped because the active application is excluded.",
+          error:
+            "Execution skipped because the active application is excluded.",
           selectionCaptured: false,
           skippedBecauseExcluded: true,
         };
@@ -523,9 +541,23 @@ export async function executePlatforms(
   }
 
   const enabledPlatforms = config.platforms.filter((item) => item.enabled);
-  const detectedAddresses = extractAddressesFromText(rawInput);
+  const getVariableType = (platform: PlatformConfig) =>
+    platform.variableType ?? "CA";
+  const anyPlatforms = enabledPlatforms.filter(
+    (platform) => getVariableType(platform) === "ANY",
+  );
+  const standardPlatforms = enabledPlatforms.filter(
+    (platform) => getVariableType(platform) !== "ANY",
+  );
 
-  if (detectedAddresses.length === 0) {
+  const detectedAddresses =
+    standardPlatforms.length > 0 ? extractAddressesFromText(rawInput) : [];
+
+  if (
+    standardPlatforms.length > 0 &&
+    detectedAddresses.length === 0 &&
+    anyPlatforms.length === 0
+  ) {
     restoreClipboardIfNeeded();
     if (config.notifications.enabled) {
       showNotification({
@@ -543,15 +575,26 @@ export async function executePlatforms(
     };
   }
 
-  const urlsToOpen = enabledPlatforms.flatMap((platform) =>
-    detectedAddresses.flatMap(({ address, type }) =>
-      buildPlatformUrls(platform, address, type).map((url) => ({
-        url,
-        platform,
-        address,
-      })),
-    ),
-  );
+  type PendingUrl = { url: string; platform: PlatformConfig; address: string };
+  const urlsToOpen: PendingUrl[] = [];
+
+  if (detectedAddresses.length > 0) {
+    standardPlatforms.forEach((platform) => {
+      detectedAddresses.forEach(({ address, type }) => {
+        buildPlatformUrls(platform, address, type).forEach((url) => {
+          urlsToOpen.push({ url, platform, address });
+        });
+      });
+    });
+  }
+
+  if (anyPlatforms.length > 0 && rawInput) {
+    anyPlatforms.forEach((platform) => {
+      buildPlatformUrls(platform, rawInput, "unknown").forEach((url) => {
+        urlsToOpen.push({ url, platform, address: rawInput });
+      });
+    });
+  }
 
   if (urlsToOpen.length === 0) {
     if (config.notifications.enabled) {
@@ -562,10 +605,12 @@ export async function executePlatforms(
       });
     }
     restoreClipboardIfNeeded();
+    const firstAddress =
+      detectedAddresses[0]?.address ?? (anyPlatforms.length > 0 ? rawInput : undefined);
     return {
       success: false,
       opened,
-      address: detectedAddresses[0]?.address,
+      address: firstAddress,
       error: "No enabled platforms available to open.",
       selectionCaptured,
     };
@@ -581,9 +626,11 @@ export async function executePlatforms(
 
   if (config.notifications.enabled) {
     const addressSummary =
-      detectedAddresses.length === 1
-        ? detectedAddresses[0].address
-        : `${detectedAddresses.length} addresses`;
+      detectedAddresses.length > 0
+        ? detectedAddresses.length === 1
+          ? detectedAddresses[0].address
+          : `${detectedAddresses.length} addresses`
+        : rawInput;
     const delayMessage =
       config.browserDelayMs > 0
         ? `Opening ${urlsToOpen.length} destination(s) for ${addressSummary} in ${Math.round(config.browserDelayMs / 100) / 10}s.`
@@ -611,7 +658,8 @@ export async function executePlatforms(
   return {
     success: opened.length > 0,
     opened,
-    address: detectedAddresses[0]?.address,
+    address:
+      detectedAddresses[0]?.address ?? (anyPlatforms.length > 0 ? rawInput : undefined),
     selectionCaptured,
   };
 }

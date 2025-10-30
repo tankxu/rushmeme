@@ -1,6 +1,7 @@
 import Store from "electron-store";
 import type {
   AppConfig,
+  AppConfigSavePayload,
   PlatformConfig,
   PlatformTemplate,
   PlatformShortcutConfig,
@@ -13,7 +14,6 @@ import { extractChainSpecFromUrl, normalizeUrlTemplates } from "@/utils/chain";
 import { isProLicensed } from "@/helpers/ipc/license/pro-status";
 import {
   getLicenseSnapshot,
-  setLicenseSnapshot,
   updateLicenseSnapshot,
   patchLicenseSnapshot,
 } from "@/helpers/ipc/license/license-store";
@@ -100,7 +100,7 @@ function serializeAppConfigForStore(
   return {
     platforms: config.platforms.map(serializePlatformForStore),
     notifications: config.notifications,
-    browserDelayMs: config.browserDelayMs,
+    browserDelayMs: 0,
     excludedApps: [...config.excludedApps],
   };
 }
@@ -154,6 +154,8 @@ function ensurePlatformDefaults(
   return {
     ...platform,
     requiresPro: platform.requiresPro ?? template?.requiresPro,
+    variableType:
+      platform.variableType ?? template?.variableType ?? "CA",
     tokenType: primaryShortcut.tokenType,
     shortcut: primaryShortcut.shortcut,
     accelerator: primaryShortcut.accelerator,
@@ -302,6 +304,7 @@ function applyRuntimeProOverrides(
     return {
       ...platform,
       enabled,
+      variableType: platform.variableType ?? "CA",
       tokenType: primaryShortcut.tokenType,
       shortcut: primaryShortcut.shortcut,
       accelerator: primaryShortcut.accelerator,
@@ -402,15 +405,13 @@ export function getConfig(): RuntimeConfig {
   };
 }
 
-export function saveConfig(config: AppConfig): AppConfig {
+export function saveConfig(config: AppConfigSavePayload): AppConfig {
   const proLicensed = isProLicensed();
   const existing = normalizeStoredConfig(store.store);
   const normalized = normalizeStoredConfig(config);
   const merged = mergeProOnlySettings(existing, normalized, proLicensed);
   store.set(serializeAppConfigForStore(merged));
-  const normalizedLicense = config.license
-    ? setLicenseSnapshot(config.license)
-    : getLicenseSnapshot();
+  const normalizedLicense = getLicenseSnapshot();
   const runtimeConfig = applyRuntimeProOverrides(merged, proLicensed);
   return {
     ...runtimeConfig,

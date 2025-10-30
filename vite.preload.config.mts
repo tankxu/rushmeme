@@ -1,4 +1,17 @@
+import path from "path";
 import { defineConfig } from "vite";
 
 // https://vitejs.dev/config
-export default defineConfig({});
+export default defineConfig({
+  build: {
+    target: "node18",
+    rollupOptions: {
+      external: ["electron"],
+    },
+  },
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+});
