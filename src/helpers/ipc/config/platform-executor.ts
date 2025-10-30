@@ -571,6 +571,14 @@ export async function executePlatforms(
     };
   }
 
+  console.log(
+    "[rushmeme] urls to open",
+    urlsToOpen.map((entry) => ({
+      platform: entry.platform.name,
+      url: entry.url,
+    })),
+  );
+
   if (config.notifications.enabled) {
     const addressSummary =
       detectedAddresses.length === 1
