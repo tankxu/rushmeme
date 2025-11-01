@@ -502,7 +502,7 @@ function clonePlatformForCustom(
   shortcutDisplay = "",
   initiallyEnabled = true,
 ): PlatformConfig {
-  const defaultUrl = "https://your-platform.com/token/{CA}";
+  const defaultUrl = "https://your-platform.com/token/{ANY}";
   const urls = normalizeUrlTemplates(
     [
       {
@@ -536,6 +536,7 @@ function clonePlatformForCustom(
         accelerator: primaryAccelerator,
       },
     ],
+    variableType: "ANY",
   };
 }
 
@@ -847,10 +848,20 @@ function HomePage() {
   const [notificationsEnabled, setNotificationsEnabled] = React.useState(
     defaultsRef.current.notifications.enabled,
   );
+  const [excludeActiveApp, setExcludeActiveApp] = React.useState(
+    defaultsRef.current.excludeActiveApp,
+  );
+  const [includeActiveAppOnly, setIncludeActiveAppOnly] = React.useState(
+    defaultsRef.current.includeActiveAppOnly,
+  );
   const [excludedApps, setExcludedApps] = React.useState<string[]>(
     defaultsRef.current.excludedApps,
   );
+  const [includedApps, setIncludedApps] = React.useState<string[]>(
+    defaultsRef.current.includedApps,
+  );
   const [excludedAppDraft, setExcludedAppDraft] = React.useState("");
+  const [includedAppDraft, setIncludedAppDraft] = React.useState("");
   const [isPro, setIsPro] = React.useState(initialIsPro);
   const [loading, setLoading] = React.useState(true);
   const [status, setStatus] = React.useState<SaveStatus>("saved");
@@ -879,6 +890,15 @@ function HomePage() {
     message: string;
   } | null>(null);
   const isMac = React.useMemo(() => isMacOS(), []);
+  const excludedAppsToggleDescription = t("home.excludedAppsToggleDescription");
+  const showExcludedAppsToggleDescription =
+    excludedAppsToggleDescription.trim().length > 0;
+  const includedAppsToggleDescription = t("home.includedAppsToggleDescription");
+  const showIncludedAppsToggleDescription =
+    includedAppsToggleDescription.trim().length > 0;
+  const [toggleConflictTarget, setToggleConflictTarget] = React.useState<
+    "exclude" | "include" | null
+  >(null);
   const shortcutLabels = React.useMemo(
     () => ({
       meta: isMac ? "⌘" : "Win",
@@ -1027,10 +1047,25 @@ function HomePage() {
               defaultsRef.current.notifications.enabled,
           ),
         );
+        setExcludeActiveApp(
+          typeof config.excludeActiveApp === "boolean"
+            ? config.excludeActiveApp
+            : defaultsRef.current.excludeActiveApp,
+        );
+        setIncludeActiveAppOnly(
+          typeof config.includeActiveAppOnly === "boolean"
+            ? config.includeActiveAppOnly
+            : defaultsRef.current.includeActiveAppOnly,
+        );
         setExcludedApps(
           Array.isArray(config.excludedApps)
             ? [...config.excludedApps]
             : [...defaultsRef.current.excludedApps],
+        );
+        setIncludedApps(
+          Array.isArray(config.includedApps)
+            ? [...config.includedApps]
+            : [...defaultsRef.current.includedApps],
         );
         await Promise.resolve();
       } catch (error) {
@@ -1064,7 +1099,10 @@ function HomePage() {
         enabled: notificationsEnabled,
       },
       browserDelayMs: browserDelay,
+      excludeActiveApp,
+      includeActiveAppOnly,
       excludedApps,
+      includedApps,
     };
 
     configApi
@@ -1087,7 +1125,10 @@ function HomePage() {
   }, [
     browserDelay,
     configApi,
+    excludeActiveApp,
     excludedApps,
+    includeActiveAppOnly,
+    includedApps,
     loading,
     notificationsEnabled,
     platforms,
@@ -1187,6 +1228,108 @@ function HomePage() {
       }
     },
     [handleAddExcludedApp],
+  );
+
+  const handleAddIncludedApp = React.useCallback(() => {
+    const candidate = includedAppDraft.trim();
+    if (!candidate) {
+      return;
+    }
+
+    if (!isPro) {
+      setUpgradeDialogVariant("advancedConfig");
+      setUpgradeDialogOpen(true);
+      return;
+    }
+
+    setIncludedApps((previous) => {
+      const exists = previous.some(
+        (entry) =>
+          entry.localeCompare(candidate, undefined, {
+            sensitivity: "accent",
+          }) === 0,
+      );
+      if (exists) {
+        return previous;
+      }
+      return [...previous, candidate];
+    });
+    setIncludedAppDraft("");
+  }, [includedAppDraft, isPro, setUpgradeDialogOpen, setUpgradeDialogVariant]);
+
+  const handleRemoveIncludedApp = React.useCallback((value: string) => {
+    setIncludedApps((previous) =>
+      previous.filter(
+        (entry) =>
+          entry.localeCompare(value, undefined, { sensitivity: "accent" }) !==
+          0,
+      ),
+    );
+  }, []);
+
+  const handleIncludedAppKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        handleAddIncludedApp();
+      }
+      if (event.key === "Escape") {
+        setIncludedAppDraft("");
+      }
+    },
+    [handleAddIncludedApp],
+  );
+
+  const handleToggleConflictCancel = React.useCallback(() => {
+    setToggleConflictTarget(null);
+  }, []);
+
+  const handleToggleConflictConfirm = React.useCallback(() => {
+    if (toggleConflictTarget === "include") {
+      setIncludeActiveAppOnly(true);
+      setExcludeActiveApp(false);
+    } else if (toggleConflictTarget === "exclude") {
+      setExcludeActiveApp(true);
+      setIncludeActiveAppOnly(false);
+    }
+    setToggleConflictTarget(null);
+  }, [toggleConflictTarget]);
+
+  const handleExcludeToggle = React.useCallback(
+    (checked: boolean) => {
+      if (!isPro) {
+        setUpgradeDialogVariant("advancedConfig");
+        setUpgradeDialogOpen(true);
+        return;
+      }
+      if (checked && includeActiveAppOnly) {
+        setToggleConflictTarget("exclude");
+        return;
+      }
+      setExcludeActiveApp(checked);
+    },
+    [
+      includeActiveAppOnly,
+      isPro,
+      setUpgradeDialogOpen,
+      setUpgradeDialogVariant,
+    ],
+  );
+
+  const handleIncludeToggle = React.useCallback(
+    (checked: boolean) => {
+      if (!isPro) {
+        setUpgradeDialogVariant("advancedConfig");
+        setUpgradeDialogOpen(true);
+        return;
+      }
+      if (checked && excludeActiveApp) {
+        setToggleConflictTarget("include");
+        return;
+      }
+      setIncludeActiveAppOnly(checked);
+    },
+    [excludeActiveApp, isPro, setUpgradeDialogOpen, setUpgradeDialogVariant],
   );
 
   const handleTogglePlatform = React.useCallback(
@@ -1627,7 +1770,9 @@ function HomePage() {
         );
       }
       const uniqueName = ensureUniquePlatformName(nextPlatform.name, previous);
-      const enabledCount = previous.filter((platform) => platform.enabled).length;
+      const enabledCount = previous.filter(
+        (platform) => platform.enabled,
+      ).length;
       const canEnableMore = isPro || enabledCount === 0;
       return [
         ...previous,
@@ -1705,6 +1850,41 @@ function HomePage() {
                 {t("home.licenseErrorDialog.retry")}
               </Button>
             ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={toggleConflictTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setToggleConflictTarget(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {t("home.applicationFiltersConflictTitle")}
+            </DialogTitle>
+            <DialogDescription>
+              {toggleConflictTarget
+                ? t(
+                    `home.applicationFiltersConflictDescription.${toggleConflictTarget}`,
+                  )
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:flex-row sm:justify-end sm:gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleToggleConflictCancel}
+            >
+              {t("home.applicationFiltersConflictCancel")}
+            </Button>
+            <Button type="button" onClick={handleToggleConflictConfirm}>
+              {t("home.applicationFiltersConflictConfirm")}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2321,51 +2501,162 @@ function HomePage() {
                       </p>
                     </div>
                     <div className="space-y-3 sm:w-1/2">
-                      <div className="flex flex-row gap-2">
-                        <Input
-                          value={excludedAppDraft}
-                          onChange={(event) =>
-                            setExcludedAppDraft(event.target.value)
-                          }
-                          onKeyDown={handleExcludedAppKeyDown}
-                          placeholder={t("home.excludedAppsPlaceholder")}
-                        />
-                        <Button
-                          type="button"
-                          onClick={handleAddExcludedApp}
-                          disabled={!excludedAppDraft.trim()}
-                          className="sm:w-auto"
-                        >
-                          {t("home.excludedAppsAddButton")}
-                        </Button>
-                      </div>
-                      {excludedApps.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {excludedApps.map((app) => (
-                            <Badge
-                              key={app}
-                              variant="secondary"
-                              className="flex items-center gap-1 py-1 pr-1 pl-2"
-                            >
-                              <span className="text-xs">{app}</span>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveExcludedApp(app)}
-                                className="text-muted-foreground hover:text-foreground transition-colors"
-                                aria-label={t("home.excludedAppsRemoveLabel", {
-                                  app,
-                                })}
-                              >
-                                <X className="h-3 w-3" strokeWidth={2} />
-                              </button>
-                            </Badge>
-                          ))}
+                      <div className="border-border/60 bg-background/70 flex items-start justify-between gap-3 rounded-lg border p-3">
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">
+                            {t("home.excludedAppsToggleLabel")}
+                          </p>
+                          {showExcludedAppsToggleDescription ? (
+                            <p className="text-muted-foreground text-xs">
+                              {excludedAppsToggleDescription}
+                            </p>
+                          ) : null}
                         </div>
-                      ) : (
-                        <p className="text-muted-foreground text-xs">
-                          {t("home.excludedAppsEmpty")}
+                        <Switch
+                          checked={excludeActiveApp}
+                          onCheckedChange={handleExcludeToggle}
+                          disabled={!isPro}
+                        />
+                      </div>
+                      {excludeActiveApp ? (
+                        <>
+                          <div className="flex flex-row gap-2">
+                            <Input
+                              value={excludedAppDraft}
+                              onChange={(event) =>
+                                setExcludedAppDraft(event.target.value)
+                              }
+                              onKeyDown={handleExcludedAppKeyDown}
+                              placeholder={t("home.excludedAppsPlaceholder")}
+                            />
+                            <Button
+                              type="button"
+                              onClick={handleAddExcludedApp}
+                              disabled={!excludedAppDraft.trim()}
+                              className="sm:w-auto"
+                            >
+                              {t("home.excludedAppsAddButton")}
+                            </Button>
+                          </div>
+                          {excludedApps.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {excludedApps.map((app) => (
+                                <Badge
+                                  key={app}
+                                  variant="secondary"
+                                  className="flex items-center gap-1 py-1 pr-1 pl-2"
+                                >
+                                  <span className="text-xs">{app}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveExcludedApp(app)}
+                                    className="text-muted-foreground hover:text-foreground transition-colors"
+                                    aria-label={t(
+                                      "home.excludedAppsRemoveLabel",
+                                      {
+                                        app,
+                                      },
+                                    )}
+                                  >
+                                    <X className="h-3 w-3" strokeWidth={2} />
+                                  </button>
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-muted-foreground text-xs">
+                              {t("home.excludedAppsEmpty")}
+                            </p>
+                          )}
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
+                    <div className="space-y-1 sm:w-1/2">
+                      <div className="flex items-center gap-2">
+                        <p className="text-primary text-sm font-semibold">
+                          {t("home.includedAppsTitle")}
                         </p>
-                      )}
+                        <span className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase">
+                          Pro
+                        </span>
+                      </div>
+                      <p className="text-muted-foreground text-xs">
+                        {t("home.includedAppsDescription")}
+                      </p>
+                    </div>
+                    <div className="space-y-3 sm:w-1/2">
+                      <div className="border-border/60 bg-background/70 flex items-start justify-between gap-3 rounded-lg border p-3">
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">
+                            {t("home.includedAppsToggleLabel")}
+                          </p>
+                          {showIncludedAppsToggleDescription ? (
+                            <p className="text-muted-foreground text-xs">
+                              {includedAppsToggleDescription}
+                            </p>
+                          ) : null}
+                        </div>
+                        <Switch
+                          checked={includeActiveAppOnly}
+                          onCheckedChange={handleIncludeToggle}
+                          disabled={!isPro}
+                        />
+                      </div>
+                      {includeActiveAppOnly ? (
+                        <>
+                          <div className="flex flex-row gap-2">
+                            <Input
+                              value={includedAppDraft}
+                              onChange={(event) =>
+                                setIncludedAppDraft(event.target.value)
+                              }
+                              onKeyDown={handleIncludedAppKeyDown}
+                              placeholder={t("home.includedAppsPlaceholder")}
+                            />
+                            <Button
+                              type="button"
+                              onClick={handleAddIncludedApp}
+                              disabled={!includedAppDraft.trim()}
+                              className="sm:w-auto"
+                            >
+                              {t("home.includedAppsAddButton")}
+                            </Button>
+                          </div>
+                          {includedApps.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {includedApps.map((app) => (
+                                <Badge
+                                  key={app}
+                                  variant="secondary"
+                                  className="flex items-center gap-1 py-1 pr-1 pl-2"
+                                >
+                                  <span className="text-xs">{app}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveIncludedApp(app)}
+                                    className="text-muted-foreground hover:text-foreground transition-colors"
+                                    aria-label={t(
+                                      "home.includedAppsRemoveLabel",
+                                      {
+                                        app,
+                                      },
+                                    )}
+                                  >
+                                    <X className="h-3 w-3" strokeWidth={2} />
+                                  </button>
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-muted-foreground text-xs">
+                              {t("home.includedAppsEmpty")}
+                            </p>
+                          )}
+                        </>
+                      ) : null}
                     </div>
                   </div>
                 </CardContent>

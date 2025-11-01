@@ -101,7 +101,20 @@ function serializeAppConfigForStore(
     platforms: config.platforms.map(serializePlatformForStore),
     notifications: config.notifications,
     browserDelayMs: 0,
-    excludedApps: [...config.excludedApps],
+    excludeActiveApp:
+      typeof config.excludeActiveApp === "boolean"
+        ? config.excludeActiveApp
+        : true,
+    includeActiveAppOnly:
+      typeof config.includeActiveAppOnly === "boolean"
+        ? config.includeActiveAppOnly
+        : false,
+    excludedApps: Array.isArray(config.excludedApps)
+      ? [...config.excludedApps]
+      : [],
+    includedApps: Array.isArray(config.includedApps)
+      ? [...config.includedApps]
+      : [],
   };
 }
 
@@ -118,7 +131,20 @@ function cloneStoredConfig(config: StoredAppConfig): StoredAppConfig {
     browserDelayMs: config.browserDelayMs,
     notifications: { ...config.notifications },
     platforms: config.platforms.map(clonePlatformConfig),
-    excludedApps: [...config.excludedApps],
+    excludeActiveApp:
+      typeof config.excludeActiveApp === "boolean"
+        ? config.excludeActiveApp
+        : true,
+    includeActiveAppOnly:
+      typeof config.includeActiveAppOnly === "boolean"
+        ? config.includeActiveAppOnly
+        : false,
+    excludedApps: Array.isArray(config.excludedApps)
+      ? [...config.excludedApps]
+      : [],
+    includedApps: Array.isArray(config.includedApps)
+      ? [...config.includedApps]
+      : [],
   };
 }
 
@@ -228,9 +254,28 @@ function normalizeExcludedApps(
   return unique;
 }
 
-type ConfigLike = Pick<AppConfig, "platforms" | "notifications" | "browserDelayMs" | "excludedApps">;
+function normalizeExcludeActiveApp(
+  rawValue: unknown,
+  fallback: boolean,
+): boolean {
+  if (typeof rawValue === "boolean") {
+    return rawValue;
+  }
+  return fallback;
+}
 
-function normalizeStoredConfig(config: ConfigLike): StoredAppConfig {
+type ExtendedConfigLike = Pick<
+  AppConfig,
+  | "platforms"
+  | "notifications"
+  | "browserDelayMs"
+  | "excludedApps"
+  | "excludeActiveApp"
+  | "includedApps"
+  | "includeActiveAppOnly"
+>;
+
+function normalizeStoredConfig(config: ExtendedConfigLike): StoredAppConfig {
   const defaults = createDefaultAppConfig();
   const templatesByKey = new Map(
     PLATFORM_TEMPLATES.map((template) => [template.key, template]),
@@ -263,9 +308,22 @@ function normalizeStoredConfig(config: ConfigLike): StoredAppConfig {
     browserDelayMs,
     notifications,
     platforms,
+    excludeActiveApp: normalizeExcludeActiveApp(
+      (config as unknown as { excludeActiveApp?: unknown }).excludeActiveApp,
+      defaults.excludeActiveApp,
+    ),
     excludedApps: normalizeExcludedApps(
       (config as unknown as { excludedApps?: unknown }).excludedApps,
       defaults.excludedApps,
+    ),
+    includeActiveAppOnly: normalizeExcludeActiveApp(
+      (config as unknown as { includeActiveAppOnly?: unknown })
+        .includeActiveAppOnly,
+      defaults.includeActiveAppOnly,
+    ),
+    includedApps: normalizeExcludedApps(
+      (config as unknown as { includedApps?: unknown }).includedApps,
+      defaults.includedApps,
     ),
   };
 }
@@ -316,7 +374,10 @@ function applyRuntimeProOverrides(
     ...cloned,
     platforms: limitedPlatforms,
     browserDelayMs: DEFAULT_BROWSER_DELAY,
+    excludeActiveApp: false,
+    includeActiveAppOnly: false,
     excludedApps: [],
+    includedApps: [],
   };
 }
 
@@ -387,7 +448,10 @@ function mergeProOnlySettings(
     ...incoming,
     platforms: mergedPlatforms,
     browserDelayMs: existing.browserDelayMs,
+    excludeActiveApp: existing.excludeActiveApp,
+    includeActiveAppOnly: existing.includeActiveAppOnly,
     excludedApps: [...existing.excludedApps],
+    includedApps: [...existing.includedApps],
   };
 }
 

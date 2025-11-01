@@ -60,7 +60,10 @@ export type AppConfig = {
   platforms: PlatformConfig[];
   notifications: NotificationConfig;
   browserDelayMs: number;
+  excludeActiveApp: boolean;
+  includeActiveAppOnly: boolean;
   excludedApps: string[];
+  includedApps: string[];
   license: LicenseSnapshot;
 };
 

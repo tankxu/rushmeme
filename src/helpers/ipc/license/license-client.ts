@@ -1,6 +1,6 @@
 import { setTimeout as delay } from "timers/promises";
 
-const LICENSE_SERVICE_BASE_URL = "https://license-worker.tankxu.workers.dev";
+const LICENSE_SERVICE_BASE_URL = "https://license.rushmeme.vip";
 const API_PREFIX = "/v1";
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -40,9 +40,10 @@ export type LicenseWorkerActivationResponse = {
   [key: string]: unknown;
 };
 
-export type LicenseWorkerValidationResponse = LicenseWorkerActivationResponse & {
-  allowed?: boolean;
-};
+export type LicenseWorkerValidationResponse =
+  LicenseWorkerActivationResponse & {
+    allowed?: boolean;
+  };
 
 export type LicenseWorkerActivationListResponse = {
   data?: Array<{
@@ -112,7 +113,10 @@ export class LicenseApiClient {
   private readonly apiKey: string | null;
 
   constructor(options?: LicenseClientOptions) {
-    this.baseUrl = (options?.baseUrl ?? LICENSE_SERVICE_BASE_URL).replace(/\/+$/, "");
+    this.baseUrl = (options?.baseUrl ?? LICENSE_SERVICE_BASE_URL).replace(
+      /\/+$/,
+      "",
+    );
     const apiKeyCandidate = options?.apiKey ?? null;
     this.apiKey = apiKeyCandidate ? apiKeyCandidate.trim() || null : null;
   }
@@ -284,9 +288,7 @@ function extractError(payload: unknown): { code: string; message: string } {
       if (typeof (errorDetails as { code?: unknown }).code === "string") {
         code = (errorDetails as { code: string }).code;
       }
-      if (
-        typeof (errorDetails as { message?: unknown }).message === "string"
-      ) {
+      if (typeof (errorDetails as { message?: unknown }).message === "string") {
         message = (errorDetails as { message: string }).message;
       }
     }

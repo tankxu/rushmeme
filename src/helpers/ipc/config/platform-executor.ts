@@ -2,7 +2,6 @@ import { clipboard, shell, Notification, systemPreferences } from "electron";
 import { setTimeout as delay } from "node:timers/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { basename } from "node:path";
 import type {
   AppConfig,
   ExecutePlatformsRequest,
@@ -17,170 +16,25 @@ import {
   extractAddressesFromText,
   type AddressType,
 } from "@/utils/chain";
+import {
+  getActiveApplication,
+  collectApplicationCandidates,
+  type ActiveApplicationInfo,
+} from "./active-application";
 
 const execFileAsync = promisify(execFile);
 
-type ActiveApplicationInfo = {
-  name?: string;
-  bundleId?: string;
-  processName?: string;
-  executable?: string;
-  path?: string;
-};
-
-async function getActiveApplicationMac(): Promise<ActiveApplicationInfo | null> {
-  const script = `
-    tell application "System Events"
-      if (count of (processes whose frontmost is true)) = 0 then
-        return ""
-      end if
-      set frontApp to first process whose frontmost is true
-      set appName to name of frontApp
-      set bundleId to ""
-      try
-        set bundleId to bundle identifier of frontApp
-      end try
-      return appName & "::" & bundleId
-    end tell
-  `.trim();
-
-  try {
-    const { stdout } = await execFileAsync("osascript", ["-e", script]);
-    const payload = stdout.trim();
-    if (!payload) {
-      return null;
-    }
-    const [rawName = "", rawBundleId = ""] = payload.split("::");
-    const name = rawName.trim();
-    const bundleId = rawBundleId.trim();
-    return {
-      name: name || undefined,
-      bundleId: bundleId || undefined,
-      processName: name || undefined,
-      executable: name ? `${name}.app` : undefined,
-    };
-  } catch (error) {
-    console.warn(
-      "[rushmeme] failed to resolve frontmost macOS application:",
-      error,
-    );
-    return null;
-  }
-}
-
-async function getActiveApplicationWindows(): Promise<ActiveApplicationInfo | null> {
-  const script = `
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public static class NativeMethods {
-  [DllImport("user32.dll")]
-  public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")]
-  public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-}
-"@
-
-$handle = [NativeMethods]::GetForegroundWindow()
-if ($handle -eq [IntPtr]::Zero) { return }
-$processId = 0
-[NativeMethods]::GetWindowThreadProcessId($handle, [ref]$processId) | Out-Null
-if ($processId -eq 0) { return }
-
-try {
-  $process = Get-Process -Id $processId -ErrorAction Stop
-  $path = ""
-  try {
-    $path = $process.MainModule.FileName
-  } catch {
-    try {
-      $path = $process.Path
-    } catch {
-      $path = ""
-    }
-  }
-  $line = "{0}::{1}" -f $process.ProcessName, $path
-  [Console]::WriteLine($line)
-} catch {
-}
-  `.trim();
-
-  try {
-    const { stdout } = await execFileAsync("powershell", [
-      "-NoProfile",
-      "-Command",
-      script,
-    ]);
-    const payload = stdout.trim();
-    if (!payload) {
-      return null;
-    }
-    const [rawProcess = "", rawPath = ""] = payload.split("::");
-    const processName = rawProcess.trim();
-    const resolvedPath = rawPath.trim();
-    const executable = resolvedPath ? basename(resolvedPath) : processName;
-    return {
-      name: processName || undefined,
-      processName: processName || undefined,
-      path: resolvedPath || undefined,
-      executable: executable || undefined,
-    };
-  } catch (error) {
-    console.warn(
-      "[rushmeme] failed to resolve foreground Windows application:",
-      error,
-    );
-    return null;
-  }
-}
-
-async function getActiveApplication(): Promise<ActiveApplicationInfo | null> {
-  if (process.platform === "darwin") {
-    return getActiveApplicationMac();
-  }
-  if (process.platform === "win32") {
-    return getActiveApplicationWindows();
-  }
-  return null;
-}
-
-function collectApplicationCandidates(
-  info: ActiveApplicationInfo | null,
-): string[] {
-  if (!info) {
-    return [];
-  }
-
-  const candidates = new Set<string>();
-  const add = (value?: string) => {
-    if (value && value.trim()) {
-      candidates.add(value.trim());
-    }
-  };
-
-  add(info.name);
-  add(info.bundleId);
-  add(info.processName);
-  add(info.executable);
-  add(info.path);
-  if (info.path) {
-    add(basename(info.path));
-  }
-
-  return Array.from(candidates);
-}
-
-type NormalizedExcludedEntry = {
+type NormalizedApplicationEntry = {
   exact: string;
   sanitized: string;
   length: number;
 };
 
-function normalizeExcludedEntries(
+function normalizeApplicationEntries(
   entries: string[],
-): NormalizedExcludedEntry[] {
+): NormalizedApplicationEntry[] {
   const seen = new Set<string>();
-  const normalized: NormalizedExcludedEntry[] = [];
+  const normalized: NormalizedApplicationEntry[] = [];
 
   for (const entry of entries) {
     const value = entry.trim().toLowerCase();
@@ -198,54 +52,139 @@ function normalizeExcludedEntries(
   return normalized;
 }
 
-function isApplicationExcluded(
+type ApplicationMatchReason =
+  | "exact"
+  | "sanitized"
+  | "endsWith"
+  | "sanitizedEndsWith"
+  | "includes";
+
+type ApplicationMatchFailure =
+  | "noInfo"
+  | "noEntries"
+  | "noCandidates"
+  | "notMatched";
+
+type ApplicationMatchResult =
+  | {
+      matched: true;
+      reason: ApplicationMatchReason;
+      candidate: string;
+      entry: NormalizedApplicationEntry;
+      candidates: string[];
+      normalizedEntries: NormalizedApplicationEntry[];
+    }
+  | {
+      matched: false;
+      reason: ApplicationMatchFailure;
+      candidates: string[];
+      normalizedEntries: NormalizedApplicationEntry[];
+    };
+
+function matchApplication(
   info: ActiveApplicationInfo | null,
-  excluded: string[],
-): boolean {
-  if (!info || excluded.length === 0) {
-    return false;
+  entries: string[],
+): ApplicationMatchResult {
+  if (!info) {
+    return {
+      matched: false,
+      reason: "noInfo",
+      candidates: [],
+      normalizedEntries: [],
+    };
   }
 
-  const normalizedExcluded = normalizeExcludedEntries(excluded);
-  if (normalizedExcluded.length === 0) {
-    return false;
+  const normalizedEntries = normalizeApplicationEntries(entries);
+  if (normalizedEntries.length === 0) {
+    return {
+      matched: false,
+      reason: "noEntries",
+      candidates: [],
+      normalizedEntries,
+    };
   }
 
   const candidates = collectApplicationCandidates(info);
   if (candidates.length === 0) {
-    return false;
+    return {
+      matched: false,
+      reason: "noCandidates",
+      candidates: [],
+      normalizedEntries,
+    };
   }
 
-  return candidates.some((candidate) => {
+  for (const candidate of candidates) {
     const raw = candidate.trim();
     if (!raw) {
-      return false;
+      continue;
     }
     const lower = raw.toLowerCase();
     const sanitized = lower.replace(/(\.app|\.exe)$/i, "");
-    return normalizedExcluded.some((entry) => {
+    for (const entry of normalizedEntries) {
       if (lower === entry.exact) {
-        return true;
+        return {
+          matched: true,
+          reason: "exact",
+          candidate: raw,
+          entry,
+          candidates,
+          normalizedEntries,
+        };
       }
       if (entry.sanitized && sanitized === entry.sanitized) {
-        return true;
+        return {
+          matched: true,
+          reason: "sanitized",
+          candidate: raw,
+          entry,
+          candidates,
+          normalizedEntries,
+        };
       }
       if (lower.endsWith(entry.exact)) {
-        return true;
+        return {
+          matched: true,
+          reason: "endsWith",
+          candidate: raw,
+          entry,
+          candidates,
+          normalizedEntries,
+        };
       }
       if (entry.sanitized && sanitized.endsWith(entry.sanitized)) {
-        return true;
+        return {
+          matched: true,
+          reason: "sanitizedEndsWith",
+          candidate: raw,
+          entry,
+          candidates,
+          normalizedEntries,
+        };
       }
       if (
         entry.length >= 3 &&
         (lower.includes(entry.exact) ||
           (entry.sanitized && sanitized.includes(entry.sanitized)))
       ) {
-        return true;
+        return {
+          matched: true,
+          reason: "includes",
+          candidate: raw,
+          entry,
+          candidates,
+          normalizedEntries,
+        };
       }
-      return false;
-    });
-  });
+    }
+  }
+
+  return {
+    matched: false,
+    reason: "notMatched",
+    candidates,
+    normalizedEntries,
+  };
 }
 
 type NotificationVariant = "info" | "success" | "error" | "warning";
@@ -467,30 +406,153 @@ export async function executePlatforms(
   const excludedApps = Array.isArray(config.excludedApps)
     ? config.excludedApps
     : [];
+  const excludeActiveApp = config.excludeActiveApp !== false;
+  const includedApps = Array.isArray(config.includedApps)
+    ? config.includedApps
+    : [];
+  const includeActiveAppOnly = config.includeActiveAppOnly === true;
 
-  if (excludedApps.length > 0) {
+  const shouldCheckInclude =
+    includeActiveAppOnly && includedApps.length > 0;
+  const shouldCheckExclude =
+    excludeActiveApp && excludedApps.length > 0;
+
+  let activeApp: ActiveApplicationInfo | null = null;
+  if (shouldCheckInclude || shouldCheckExclude) {
     try {
-      const activeApp = await getActiveApplication();
-      if (isApplicationExcluded(activeApp, excludedApps)) {
-        console.log(
-          "[rushmeme] execution skipped: active application is excluded.",
-          activeApp,
-        );
+      activeApp = await getActiveApplication();
+      console.log("[rushmeme] active application info", { activeApp });
+    } catch (error) {
+      console.warn(
+        "[rushmeme] failed to resolve active application:",
+        error,
+      );
+    }
+  }
+
+  if (shouldCheckInclude) {
+    console.log("[rushmeme] evaluating allowed applications", {
+      includedApps,
+      includeActiveAppOnly,
+      platform: process.platform,
+    });
+    const match = matchApplication(activeApp, includedApps);
+    if (match.matched) {
+      console.log("[rushmeme] allowlist matched", {
+        candidate: match.candidate,
+        reason: match.reason,
+        entry: {
+          exact: match.entry.exact,
+          sanitized: match.entry.sanitized,
+        },
+      });
+    } else {
+      switch (match.reason) {
+        case "noEntries":
+          console.log(
+            "[rushmeme] allowlist check skipped: no normalized entries",
+            { includedApps },
+          );
+          break;
+        case "noInfo":
+          console.log(
+            "[rushmeme] allowlist check skipped: active application unavailable",
+          );
+          break;
+        case "noCandidates":
+          console.log(
+            "[rushmeme] allowlist check skipped: no application candidates",
+            { appInfo: activeApp },
+          );
+          break;
+        case "notMatched":
+          console.log("[rushmeme] allowlist not matched", {
+            candidates: match.candidates,
+            normalizedIncluded: match.normalizedEntries.map((entry) => ({
+              exact: entry.exact,
+              sanitized: entry.sanitized,
+            })),
+          });
+          break;
+      }
+
+      if (match.reason !== "noEntries") {
         return {
           success: false,
           opened,
           error:
-            "Execution skipped because the active application is excluded.",
+            "Execution skipped because the active application is not on the allowlist.",
           selectionCaptured: false,
           skippedBecauseExcluded: true,
         };
       }
-    } catch (error) {
-      console.warn(
-        "[rushmeme] failed to evaluate active application for exclusion:",
-        error,
-      );
     }
+  } else if (includeActiveAppOnly) {
+    console.log(
+      "[rushmeme] allowlist enabled but no applications configured; check skipped",
+    );
+  }
+
+  if (shouldCheckExclude) {
+    console.log("[rushmeme] evaluating excluded applications", {
+      excludedApps,
+      excludeActiveApp,
+      platform: process.platform,
+    });
+    const match = matchApplication(activeApp, excludedApps);
+    if (match.matched) {
+      console.log(
+        "[rushmeme] execution skipped: active application is excluded.",
+        {
+          candidate: match.candidate,
+          reason: match.reason,
+          entry: {
+            exact: match.entry.exact,
+            sanitized: match.entry.sanitized,
+          },
+        },
+      );
+      return {
+        success: false,
+        opened,
+        error:
+          "Execution skipped because the active application is excluded.",
+        selectionCaptured: false,
+        skippedBecauseExcluded: true,
+      };
+    }
+
+    switch (match.reason) {
+      case "noEntries":
+        console.log(
+          "[rushmeme] exclusion check aborted: no normalized entries",
+          { excluded: excludedApps },
+        );
+        break;
+      case "noInfo":
+        console.log(
+          "[rushmeme] exclusion check aborted: active application unavailable",
+        );
+        break;
+      case "noCandidates":
+        console.log("[rushmeme] exclusion check aborted: no candidates", {
+          appInfo: activeApp,
+        });
+        break;
+      case "notMatched":
+        console.log("[rushmeme] exclusion not matched", {
+          candidates: match.candidates,
+          normalizedExcluded: match.normalizedEntries.map((entry) => ({
+            exact: entry.exact,
+            sanitized: entry.sanitized,
+          })),
+        });
+        break;
+    }
+  }
+
+  if (!excludeActiveApp && !includeActiveAppOnly) {
+    console.log("[rushmeme] excluded applications disabled");
   }
 
   console.log("[rushmeme] execute action", new Date().toISOString());

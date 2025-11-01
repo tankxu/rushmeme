@@ -32,12 +32,8 @@ export const PLATFORM_TEMPLATES: PlatformTemplate[] = [
     enabled: false,
     shortcuts: [
       {
-        tokenType: "Solana",
+        tokenType: "Base | Solana",
         shortcut: "⌃1",
-      },
-      {
-        tokenType: "Base",
-        shortcut: "⌃2",
       },
     ],
     urls: [
@@ -64,7 +60,7 @@ export const PLATFORM_TEMPLATES: PlatformTemplate[] = [
     shortcuts: [
       {
         tokenType: "Base | Solana",
-        shortcut: "⌃3",
+        shortcut: "⌃2",
       },
     ],
     urls: [

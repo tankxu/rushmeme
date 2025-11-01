@@ -86,7 +86,10 @@ export function createDefaultAppConfig(): AppConfig {
       enabled: true,
     },
     browserDelayMs: 0,
+    excludeActiveApp: true,
+    includeActiveAppOnly: false,
     excludedApps: [],
+    includedApps: [],
     license: createDefaultLicenseSnapshot(),
   };
 }
