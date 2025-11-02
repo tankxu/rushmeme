@@ -60,6 +60,7 @@ export type AppConfig = {
   platforms: PlatformConfig[];
   notifications: NotificationConfig;
   browserDelayMs: number;
+  smartChainCorrectionEnabled: boolean;
   excludeActiveApp: boolean;
   includeActiveAppOnly: boolean;
   excludedApps: string[];
@@ -75,6 +76,7 @@ export type AppConfigSavePayload = Omit<AppConfig, "license">;
 
 export type ExecutePlatformsRequest = {
   overrideAddress?: string;
+  bypassAppFilters?: boolean;
 };
 
 export type ExecutePlatformsResponse = {

@@ -4,6 +4,7 @@ import { exposeConfigContext } from "./config/config-context";
 import { exposeShellContext } from "./shell/shell-context";
 import { exposeLanguageContext } from "./language/language-context";
 import { exposeLicenseContext } from "./license/license-context";
+import { exposeAppContext } from "./app/app-context";
 
 export default function exposeContexts() {
   exposeWindowContext();
@@ -12,4 +13,5 @@ export default function exposeContexts() {
   exposeShellContext();
   exposeLanguageContext();
   exposeLicenseContext();
+  exposeAppContext();
 }

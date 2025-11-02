@@ -16,6 +16,18 @@ i18n.use(initReactI18next).init({
           cancel: "Cancel",
           save: "Save changes",
         },
+        footer: {
+          newVersionBadge: "New version",
+          versionDialogTitle: "New version available",
+          versionDialogDescription: "Version {{version}} is ready to download.",
+          versionDialogGeneric: "A newer version is available.",
+          versionDialogNotesTitle: "Release notes",
+          versionDialogDownloadHint: "We'll download the {{platform}} build.",
+          downloadButtonLabel: "Download update",
+          downloadUnavailable:
+            "No compatible download link is available for this device.",
+          closeButtonLabel: "Close",
+        },
         common: {
           tokenType: "Token type",
           shortcut: "Shortcut",
@@ -44,6 +56,11 @@ i18n.use(initReactI18next).init({
             "Define a delay before opening browser tabs; free users wait for the countdown, while Pro users launch instantly.",
           browserDelayValue: "{{value}} ms delay",
           delayBadge: "Instant for Pro",
+          proExpiresTomorrow: "Expires tomorrow",
+          smartChainCorrectionTitle: "Smart chain correction",
+          smartChainCorrectionDescription:
+            "Double-checks the detected chain against opened URLs and nudges the right destination when they mismatch.",
+          smartChainCorrectionToggleLabel: "Enable smart correction",
           notificationsTitle: "Notifications",
           notificationsDescription:
             "Decide when Rush Meme should display OS notifications after an execution attempt.",
@@ -191,6 +208,17 @@ i18n.use(initReactI18next).init({
           cancel: "取消",
           save: "保存修改",
         },
+        footer: {
+          newVersionBadge: "发现新版本",
+          versionDialogTitle: "发现新版本",
+          versionDialogDescription: "版本 {{version}} 已可下载。",
+          versionDialogGeneric: "检测到更高版本。",
+          versionDialogNotesTitle: "更新说明",
+          versionDialogDownloadHint: "将下载 {{platform}} 安装包。",
+          downloadButtonLabel: "立即下载",
+          downloadUnavailable: "当前设备暂未提供匹配的下载链接。",
+          closeButtonLabel: "关闭",
+        },
         common: {
           tokenType: "代币类型",
           shortcut: "快捷键",
@@ -218,6 +246,11 @@ i18n.use(initReactI18next).init({
             "为打开浏览器标签设置延时。免费用户需等待计时完成，升级 Pro 后即可立刻打开。",
           browserDelayValue: "当前延时 {{value}} 毫秒",
           delayBadge: "升级 Pro 享 0 延时",
+          proExpiresTomorrow: "明日到期",
+          smartChainCorrectionTitle: "智能公链纠正",
+          smartChainCorrectionDescription:
+            "自动检测 CA 所属公链，校验是否为已开启 URL，不一致时打开正确 URL。",
+          smartChainCorrectionToggleLabel: "启用",
           notificationsTitle: "通知提醒",
           notificationsDescription: "选择在执行成功或失败时是否展示系统通知。",
           notificationsToggleLabel: "开启系统通知",

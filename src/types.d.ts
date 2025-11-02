@@ -9,6 +9,7 @@ import type {
   LicenseSnapshot,
   RuntimeConfig,
 } from "@/types/config";
+import type { AppLatestRelease, AppRuntimeInfo } from "@/types/app";
 import type {
   LicenseActivationSummary,
   LicenseOperationResult,
@@ -73,6 +74,24 @@ declare global {
     ) => () => void;
   }
 
+  interface RushAppContext {
+    getVersion: () => Promise<string>;
+    fetchLatestRelease: (options?: {
+      channel?: string;
+    }) => Promise<
+      | {
+          ok: true;
+          data: AppLatestRelease;
+        }
+      | {
+          ok: false;
+          status?: number;
+          message: string;
+        }
+    >;
+    getRuntimeInfo: () => Promise<AppRuntimeInfo>;
+  }
+
   interface Window {
     themeMode: ThemeModeContext;
     electronWindow: ElectronWindow;
@@ -84,6 +103,7 @@ declare global {
       getSnapshot: () => LicenseSnapshot | null;
       isPro: () => boolean;
     };
+    rushApp: RushAppContext;
     rushProRuntime?: {
       getFlag?: () => boolean | undefined;
     };

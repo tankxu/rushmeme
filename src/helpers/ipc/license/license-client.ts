@@ -103,6 +103,14 @@ export type LicenseActivationListRequest = {
   licenseKey: string;
 };
 
+export type AveTokenChainsResponse = {
+  keyword?: string;
+  chains?: string[];
+  source?: string;
+  fetched_at?: number;
+  fetchedAt?: number;
+};
+
 type LicenseClientOptions = {
   baseUrl?: string;
   apiKey?: string | null;
@@ -193,6 +201,30 @@ export class LicenseApiClient {
         method: "GET",
       },
       request.licenseKey,
+    );
+  }
+
+  async fetchTokenChains(
+    licenseKey: string,
+    keyword: string,
+  ): Promise<LicenseApiResult<AveTokenChainsResponse>> {
+    const trimmed = keyword.trim();
+    if (!trimmed) {
+      return {
+        ok: false,
+        status: 400,
+        code: "invalid_keyword",
+        message: "Token keyword is required",
+        retryable: false,
+      };
+    }
+
+    return this.call<AveTokenChainsResponse>(
+      `/ave/tokens?keyword=${encodeURIComponent(trimmed)}`,
+      {
+        method: "GET",
+      },
+      licenseKey,
     );
   }
 

@@ -85,6 +85,7 @@ export function createDefaultAppConfig(): AppConfig {
     notifications: {
       enabled: true,
     },
+    smartChainCorrectionEnabled: false,
     browserDelayMs: 0,
     excludeActiveApp: true,
     includeActiveAppOnly: false,

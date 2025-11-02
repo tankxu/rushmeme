@@ -22,7 +22,9 @@ type StoredAppConfig = Omit<AppConfig, "license">;
 
 function createDefaultStoredConfig(): StoredAppConfig {
   const defaults = createDefaultAppConfig();
-  return serializeAppConfigForStore(defaults);
+  const serialized = serializeAppConfigForStore(defaults);
+  serialized.smartChainCorrectionEnabled = true;
+  return serialized;
 }
 
 const store = new Store<StoredAppConfig>({
@@ -100,6 +102,9 @@ function serializeAppConfigForStore(
   return {
     platforms: config.platforms.map(serializePlatformForStore),
     notifications: config.notifications,
+    smartChainCorrectionEnabled: Boolean(
+      (config as AppConfig).smartChainCorrectionEnabled,
+    ),
     browserDelayMs: 0,
     excludeActiveApp:
       typeof config.excludeActiveApp === "boolean"
@@ -131,6 +136,7 @@ function cloneStoredConfig(config: StoredAppConfig): StoredAppConfig {
     browserDelayMs: config.browserDelayMs,
     notifications: { ...config.notifications },
     platforms: config.platforms.map(clonePlatformConfig),
+    smartChainCorrectionEnabled: Boolean(config.smartChainCorrectionEnabled),
     excludeActiveApp:
       typeof config.excludeActiveApp === "boolean"
         ? config.excludeActiveApp
@@ -269,6 +275,7 @@ type ExtendedConfigLike = Pick<
   | "platforms"
   | "notifications"
   | "browserDelayMs"
+  | "smartChainCorrectionEnabled"
   | "excludedApps"
   | "excludeActiveApp"
   | "includedApps"
@@ -308,6 +315,12 @@ function normalizeStoredConfig(config: ExtendedConfigLike): StoredAppConfig {
     browserDelayMs,
     notifications,
     platforms,
+    smartChainCorrectionEnabled:
+      typeof (config as { smartChainCorrectionEnabled?: unknown })
+        .smartChainCorrectionEnabled === "boolean"
+        ? ((config as { smartChainCorrectionEnabled?: boolean })
+            .smartChainCorrectionEnabled as boolean)
+        : true,
     excludeActiveApp: normalizeExcludeActiveApp(
       (config as unknown as { excludeActiveApp?: unknown }).excludeActiveApp,
       defaults.excludeActiveApp,
@@ -374,6 +387,7 @@ function applyRuntimeProOverrides(
     ...cloned,
     platforms: limitedPlatforms,
     browserDelayMs: DEFAULT_BROWSER_DELAY,
+    smartChainCorrectionEnabled: false,
     excludeActiveApp: false,
     includeActiveAppOnly: false,
     excludedApps: [],
@@ -448,6 +462,7 @@ function mergeProOnlySettings(
     ...incoming,
     platforms: mergedPlatforms,
     browserDelayMs: existing.browserDelayMs,
+    smartChainCorrectionEnabled: existing.smartChainCorrectionEnabled,
     excludeActiveApp: existing.excludeActiveApp,
     includeActiveAppOnly: existing.includeActiveAppOnly,
     excludedApps: [...existing.excludedApps],
@@ -471,8 +486,23 @@ export function getConfig(): RuntimeConfig {
 
 export function saveConfig(config: AppConfigSavePayload): AppConfig {
   const proLicensed = isProLicensed();
+  const desiredSmartCorrection =
+    typeof config.smartChainCorrectionEnabled === "boolean"
+      ? proLicensed
+        ? config.smartChainCorrectionEnabled
+        : true
+      : true;
+
+  const preparedConfig =
+    config.smartChainCorrectionEnabled === desiredSmartCorrection
+      ? config
+      : {
+          ...config,
+          smartChainCorrectionEnabled: desiredSmartCorrection,
+        };
+
   const existing = normalizeStoredConfig(store.store);
-  const normalized = normalizeStoredConfig(config);
+  const normalized = normalizeStoredConfig(preparedConfig);
   const merged = mergeProOnlySettings(existing, normalized, proLicensed);
   store.set(serializeAppConfigForStore(merged));
   const normalizedLicense = getLicenseSnapshot();

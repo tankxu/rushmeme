@@ -16,6 +16,4 @@ src/helpers/ipc/license/license-store.ts:134-196、src/helpers/ipc/license/licen
 
 ## 问题列表
 
-- Pro 升级页面内容和布局
-- 平台展示里面没有显示 base 的url
-- 托盘里面没有显示第二个 token type
+- license 到期提醒

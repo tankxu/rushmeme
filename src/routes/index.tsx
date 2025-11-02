@@ -55,6 +55,7 @@ import type {
   PlatformConfig,
   PlatformShortcutConfig,
   PlatformTemplate,
+  LicenseSnapshot,
 } from "@/types/config";
 import {
   PLATFORM_TEMPLATES,
@@ -93,6 +94,8 @@ const SHIFTED_DIGIT_MAP: Record<string, string> = {
   "(": "9",
   ")": "0",
 };
+
+const ONE_DAY_MS = 86_400_000;
 
 function formatShortcutFromEvent(
   event: React.KeyboardEvent<HTMLInputElement>,
@@ -826,6 +829,9 @@ function HomePage() {
   const licenseRef = React.useRef(
     initialLicenseSnapshot ?? defaultsRef.current.license,
   );
+  const [licenseSnapshotState, setLicenseSnapshotState] = React.useState<
+    LicenseSnapshot
+  >(licenseRef.current);
   const initialIsPro = (() => {
     if (typeof window === "undefined") {
       return false;
@@ -848,6 +854,8 @@ function HomePage() {
   const [notificationsEnabled, setNotificationsEnabled] = React.useState(
     defaultsRef.current.notifications.enabled,
   );
+  const [smartChainCorrectionEnabled, setSmartChainCorrectionEnabled] =
+    React.useState(defaultsRef.current.smartChainCorrectionEnabled);
   const [excludeActiveApp, setExcludeActiveApp] = React.useState(
     defaultsRef.current.excludeActiveApp,
   );
@@ -924,6 +932,24 @@ function HomePage() {
     return computeShortcutConflicts([...others, editingPlatformDraft]);
   }, [editingPlatformDraft, platforms]);
 
+  const expiresAtValue = licenseSnapshotState.expiresAt;
+  let proExpiryNotice: string | null = null;
+  if (
+    isPro &&
+    typeof expiresAtValue === "string" &&
+    expiresAtValue.trim().length > 0
+  ) {
+    const expiryMs = Date.parse(expiresAtValue);
+    if (Number.isFinite(expiryMs)) {
+      const now = Date.now();
+      const diff = expiryMs - now;
+      if (diff > 0 && diff <= ONE_DAY_MS) {
+        proExpiryNotice = t("home.proExpiresTomorrow");
+      }
+    }
+  }
+  const proButtonLabel = proExpiryNotice ? `Pro · ${proExpiryNotice}` : "Pro";
+
   const previousIsProRef = React.useRef(isPro);
 
   React.useEffect(() => {
@@ -962,6 +988,7 @@ function HomePage() {
     licenseApi
       .watch((snapshot) => {
         licenseRef.current = snapshot;
+        setLicenseSnapshotState(snapshot);
         const nextIsPro = snapshot.status === "active";
         setIsPro(nextIsPro);
         if (snapshot.status === "active") {
@@ -1041,11 +1068,17 @@ function HomePage() {
         setBrowserDelay(config.browserDelayMs ?? DEFAULT_BROWSER_DELAY);
         // preserve license for saving
         licenseRef.current = config.license;
+        setLicenseSnapshotState(config.license);
         setNotificationsEnabled(
           Boolean(
             config.notifications?.enabled ??
               defaultsRef.current.notifications.enabled,
           ),
+        );
+        setSmartChainCorrectionEnabled(
+          typeof config.smartChainCorrectionEnabled === "boolean"
+            ? config.smartChainCorrectionEnabled
+            : defaultsRef.current.smartChainCorrectionEnabled,
         );
         setExcludeActiveApp(
           typeof config.excludeActiveApp === "boolean"
@@ -1099,6 +1132,7 @@ function HomePage() {
         enabled: notificationsEnabled,
       },
       browserDelayMs: browserDelay,
+      smartChainCorrectionEnabled,
       excludeActiveApp,
       includeActiveAppOnly,
       excludedApps,
@@ -1130,6 +1164,7 @@ function HomePage() {
     includeActiveAppOnly,
     includedApps,
     loading,
+    smartChainCorrectionEnabled,
     notificationsEnabled,
     platforms,
   ]);
@@ -1294,6 +1329,18 @@ function HomePage() {
     }
     setToggleConflictTarget(null);
   }, [toggleConflictTarget]);
+
+  const handleSmartChainCorrectionToggle = React.useCallback(
+    (checked: boolean) => {
+      if (!isPro) {
+        setUpgradeDialogVariant("advancedConfig");
+        setUpgradeDialogOpen(true);
+        return;
+      }
+      setSmartChainCorrectionEnabled(checked);
+    },
+    [isPro, setUpgradeDialogOpen, setUpgradeDialogVariant],
+  );
 
   const handleExcludeToggle = React.useCallback(
     (checked: boolean) => {
@@ -2176,7 +2223,7 @@ function HomePage() {
                   {isPro ? (
                     <>
                       <BadgeCheck className="size-4" />
-                      <span>Pro</span>
+                      <span>{proButtonLabel}</span>
                     </>
                   ) : (
                     t("buttons.upgrade")
@@ -2481,6 +2528,34 @@ function HomePage() {
                           onCheckedChange={(checked) =>
                             setNotificationsEnabled(checked)
                           }
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
+                    <div className="space-y-1 sm:w-1/2">
+                      <div className="flex items-center gap-2">
+                        <p className="text-primary text-sm font-semibold">
+                          {t("home.smartChainCorrectionTitle")}
+                        </p>
+                        <span className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase">
+                          Pro
+                        </span>
+                      </div>
+                      <p className="text-muted-foreground text-xs">
+                        {t("home.smartChainCorrectionDescription")}
+                      </p>
+                    </div>
+                    <div className="sm:w-1/2">
+                      <div className="border-border/60 bg-background/70 flex items-center justify-between rounded-lg border p-3">
+                        <p className="text-sm font-medium">
+                          {t("home.smartChainCorrectionToggleLabel")}
+                        </p>
+                        <Switch
+                          checked={smartChainCorrectionEnabled}
+                          onCheckedChange={handleSmartChainCorrectionToggle}
+                          disabled={!isPro}
                         />
                       </div>
                     </div>

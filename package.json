@@ -1,7 +1,7 @@
 {
-  "name": "RushMeme",
+  "name": "rushmeme",
   "productName": "Rush Meme",
-  "version": "1.0.0",
+  "version": "v0.1.0",
   "description": "Select any contract address and open your trading platform instantly.",
   "main": ".vite/build/main.js",
   "private": true,

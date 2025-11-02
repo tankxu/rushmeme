@@ -14,8 +14,10 @@ import {
   parseChainSpec,
   normalizeChainTokenKey,
   extractAddressesFromText,
+  detectAddressType,
   type AddressType,
 } from "@/utils/chain";
+import { getLicenseApiClient } from "@/helpers/ipc/license/license-client";
 import {
   getActiveApplication,
   collectApplicationCandidates,
@@ -347,11 +349,26 @@ async function captureSelectedText(): Promise<{
   return { captured: true, text: trimmed, original };
 }
 
+type ResolvedPlatformUrl = {
+  url: string;
+  chain: string;
+  tokens: string[];
+};
+
+type PendingPlatformUrl = {
+  url: string;
+  platform: PlatformConfig;
+  address: string;
+  chain: string;
+  chainTokens: string[];
+  addressType: AddressType;
+};
+
 function buildPlatformUrls(
   platform: PlatformConfig,
   address: string,
   addressType: AddressType,
-) {
+): ResolvedPlatformUrl[] {
   const allowedTokens = new Set(
     parseChainSpec(platform.tokenType ?? "")
       .map((token) => normalizeChainTokenKey(token))
@@ -379,22 +396,280 @@ function buildPlatformUrls(
 
       return entryTokens.some((token) => allowedTokens.has(token));
     })
-    .map((entry) => {
+    .flatMap((entry) => {
       const resolvedUrl = resolveUrlForAddress(
         entry.url,
         entry.chain,
         addressType,
       );
-      switch (platform.variableType) {
-        case "ANY":
-          return resolvedUrl.replace("{ANY}", encodeURIComponent(address));
-          break;
-        default:
-          return resolvedUrl.replace("{CA}", encodeURIComponent(address));
-          break;
+      const formattedUrl =
+        platform.variableType === "ANY"
+          ? resolvedUrl.replace("{ANY}", encodeURIComponent(address))
+          : resolvedUrl.replace("{CA}", encodeURIComponent(address));
+      const rawTokens = parseChainSpec(entry.chain);
+      const normalizedTokens = rawTokens
+        .map((token) => normalizeChainTokenKey(token))
+        .filter(Boolean);
+      if (!formattedUrl) {
+        return [];
       }
+      return [
+        {
+          url: formattedUrl,
+          chain: entry.chain,
+          tokens: normalizedTokens,
+        },
+      ];
     })
-    .filter(Boolean);
+    .filter((entry) => typeof entry.url === "string" && entry.url.length > 0);
+}
+
+async function maybeRunSmartChainCorrection(
+  config: AppConfig,
+  context: {
+    address: string;
+    addressType: AddressType;
+    pendingUrls: PendingPlatformUrl[];
+    openedUrls: readonly string[];
+  },
+): Promise<void> {
+  if (!config.smartChainCorrectionEnabled) {
+    return;
+  }
+
+  if (context.pendingUrls.length === 0) {
+    return;
+  }
+
+  const runtimeFlag = (config as { isPro?: boolean }).isPro;
+  if (runtimeFlag === false) {
+    return;
+  }
+
+  const licenseSnapshot = config.license;
+  if (!licenseSnapshot || licenseSnapshot.status !== "active") {
+    return;
+  }
+
+  const licenseKey = licenseSnapshot.key?.trim();
+  if (!licenseKey) {
+    return;
+  }
+
+  const keyword = context.address.trim();
+  if (!keyword) {
+    return;
+  }
+
+  const relevantUrls = context.pendingUrls.filter(
+    (entry) => entry.address === context.address,
+  );
+  if (relevantUrls.length === 0) {
+    return;
+  }
+
+  const targetAddressType =
+    relevantUrls[0]?.addressType ?? context.addressType;
+
+  try {
+    const client = getLicenseApiClient();
+    const result = await client.fetchTokenChains(licenseKey, keyword);
+
+    if (!result.ok) {
+      if (result.status === 429) {
+        console.info(
+          "[rushmeme] smart chain correction skipped: token lookup rate limited",
+        );
+      } else {
+        console.warn("[rushmeme] smart chain correction lookup failed", {
+          status: result.status,
+          code: result.code,
+          message: result.message,
+        });
+      }
+      return;
+    }
+
+    const chains = Array.isArray(result.data.chains)
+      ? result.data.chains
+      : [];
+
+    const normalizedChains = chains
+      .map((chain) => normalizeChainTokenKey(chain))
+      .filter(Boolean);
+
+    if (normalizedChains.length === 0) {
+      return;
+    }
+
+    const openedTokens = new Set<string>();
+    let openedHasAny = false;
+
+    for (const pending of relevantUrls) {
+      const tokens =
+        pending.chainTokens.length > 0
+          ? pending.chainTokens
+          : parseChainSpec(pending.platform.tokenType ?? "")
+              .map((token) => normalizeChainTokenKey(token))
+              .filter(Boolean);
+
+      if (tokens.length === 0) {
+        continue;
+      }
+
+      for (const token of tokens) {
+        if (!token) {
+          continue;
+        }
+        if (token === "any") {
+          openedHasAny = true;
+        }
+        openedTokens.add(token);
+      }
+    }
+
+    if (openedHasAny) {
+      return;
+    }
+
+    const hasMatch = normalizedChains.some(
+      (token) => token === "any" || openedTokens.has(token),
+    );
+
+    if (hasMatch) {
+      return;
+    }
+
+    const candidatesByToken = new Map<
+      string,
+      Array<{ url: string; platform: PlatformConfig }>
+    >();
+
+    for (const pending of relevantUrls) {
+      const platform = pending.platform;
+      for (const entry of platform.urls) {
+        if (!chainSupportsAddressType(entry.chain, targetAddressType)) {
+          continue;
+        }
+
+        const resolvedUrl = resolveUrlForAddress(
+          entry.url,
+          entry.chain,
+          targetAddressType,
+        );
+
+        const finalUrl =
+          platform.variableType === "ANY"
+            ? resolvedUrl.replace("{ANY}", encodeURIComponent(context.address))
+            : resolvedUrl.replace("{CA}", encodeURIComponent(context.address));
+
+        if (!finalUrl) {
+          continue;
+        }
+
+        const entryTokens = parseChainSpec(entry.chain)
+          .map((token) => normalizeChainTokenKey(token))
+          .filter(Boolean);
+
+        const effectiveTokens =
+          entryTokens.length > 0
+            ? entryTokens
+            : parseChainSpec(platform.tokenType ?? "")
+                .map((token) => normalizeChainTokenKey(token))
+                .filter(Boolean);
+
+        if (effectiveTokens.length === 0) {
+          continue;
+        }
+
+        for (const token of effectiveTokens) {
+          if (!token || token === "any") {
+            continue;
+          }
+          if (!candidatesByToken.has(token)) {
+            candidatesByToken.set(token, []);
+          }
+          candidatesByToken.get(token)?.push({ url: finalUrl, platform });
+        }
+      }
+    }
+
+    const targetToken =
+      normalizedChains.find((token) => candidatesByToken.has(token)) ?? null;
+
+    if (!targetToken) {
+      if (config.notifications.enabled) {
+        const fallbackChain = chains[0] ?? "unknown";
+        showNotification({
+          title: "Smart chain correction",
+          body: `Detected ${fallbackChain.toUpperCase()} but no matching destination is configured.`,
+          variant: "warning",
+        });
+      }
+      console.info(
+        "[rushmeme] smart chain correction: no configured destination for detected chains",
+        {
+          chains,
+          openedTokens: Array.from(openedTokens),
+        },
+      );
+      return;
+    }
+
+    const displayChain =
+      chains.find(
+        (chain) => normalizeChainTokenKey(chain) === targetToken,
+      ) ?? targetToken;
+
+    const alreadyOpened = new Set(context.openedUrls);
+    const candidates = candidatesByToken.get(targetToken) ?? [];
+    const next = candidates.find(
+      (candidate) => !alreadyOpened.has(candidate.url),
+    );
+
+    if (!next) {
+      if (config.notifications.enabled) {
+        showNotification({
+          title: "Smart chain correction",
+          body: `Detected ${displayChain.toUpperCase()} but no additional destination was opened.`,
+          variant: "info",
+        });
+      }
+      console.info(
+        "[rushmeme] smart chain correction: matching destination already opened",
+        {
+          chain: displayChain,
+        },
+      );
+      return;
+    }
+
+    try {
+      await shell.openExternal(next.url);
+    } catch (error) {
+      console.error(
+        "[rushmeme] smart chain correction: failed to open corrected destination",
+        error,
+      );
+      return;
+    }
+
+    console.log("[rushmeme] smart chain correction opened destination", {
+      platform: next.platform.name,
+      chain: displayChain,
+      url: next.url,
+    });
+
+    if (config.notifications.enabled) {
+      showNotification({
+        title: "Smart chain correction",
+        body: `Detected ${displayChain.toUpperCase()} and opened ${next.platform.name}.`,
+        variant: "success",
+      });
+    }
+  } catch (error) {
+    console.warn("[rushmeme] smart chain correction failed:", error);
+  }
 }
 
 export async function executePlatforms(
@@ -402,6 +677,7 @@ export async function executePlatforms(
   request?: ExecutePlatformsRequest,
 ): Promise<ExecutePlatformsResponse> {
   const opened: string[] = [];
+  const bypassApplicationFilters = request?.bypassAppFilters === true;
 
   const excludedApps = Array.isArray(config.excludedApps)
     ? config.excludedApps
@@ -413,12 +689,14 @@ export async function executePlatforms(
   const includeActiveAppOnly = config.includeActiveAppOnly === true;
 
   const shouldCheckInclude =
-    includeActiveAppOnly && includedApps.length > 0;
+    !bypassApplicationFilters &&
+    includeActiveAppOnly &&
+    includedApps.length > 0;
   const shouldCheckExclude =
-    excludeActiveApp && excludedApps.length > 0;
+    !bypassApplicationFilters && excludeActiveApp && excludedApps.length > 0;
 
   let activeApp: ActiveApplicationInfo | null = null;
-  if (shouldCheckInclude || shouldCheckExclude) {
+  if (!bypassApplicationFilters && (shouldCheckInclude || shouldCheckExclude)) {
     try {
       activeApp = await getActiveApplication();
       console.log("[rushmeme] active application info", { activeApp });
@@ -487,7 +765,7 @@ export async function executePlatforms(
         };
       }
     }
-  } else if (includeActiveAppOnly) {
+  } else if (!bypassApplicationFilters && includeActiveAppOnly) {
     console.log(
       "[rushmeme] allowlist enabled but no applications configured; check skipped",
     );
@@ -551,7 +829,11 @@ export async function executePlatforms(
     }
   }
 
-  if (!excludeActiveApp && !includeActiveAppOnly) {
+  if (
+    !bypassApplicationFilters &&
+    !excludeActiveApp &&
+    !includeActiveAppOnly
+  ) {
     console.log("[rushmeme] excluded applications disabled");
   }
 
@@ -637,24 +919,42 @@ export async function executePlatforms(
     };
   }
 
-  type PendingUrl = { url: string; platform: PlatformConfig; address: string };
-  const urlsToOpen: PendingUrl[] = [];
+  const urlsToOpen: PendingPlatformUrl[] = [];
+  const fallbackAnyAddressType = detectAddressType(rawInput);
 
   if (detectedAddresses.length > 0) {
     standardPlatforms.forEach((platform) => {
       detectedAddresses.forEach(({ address, type }) => {
-        buildPlatformUrls(platform, address, type).forEach((url) => {
-          urlsToOpen.push({ url, platform, address });
-        });
+        buildPlatformUrls(platform, address, type).forEach(
+          ({ url, chain, tokens }) => {
+            urlsToOpen.push({
+              url,
+              platform,
+              address,
+              chain,
+              chainTokens: tokens,
+              addressType: type,
+            });
+          },
+        );
       });
     });
   }
 
   if (anyPlatforms.length > 0 && rawInput) {
     anyPlatforms.forEach((platform) => {
-      buildPlatformUrls(platform, rawInput, "unknown").forEach((url) => {
-        urlsToOpen.push({ url, platform, address: rawInput });
-      });
+      buildPlatformUrls(platform, rawInput, fallbackAnyAddressType).forEach(
+        ({ url, chain, tokens }) => {
+          urlsToOpen.push({
+            url,
+            platform,
+            address: rawInput,
+            chain,
+            chainTokens: tokens,
+            addressType: fallbackAnyAddressType,
+          });
+        },
+      );
     });
   }
 
@@ -683,6 +983,7 @@ export async function executePlatforms(
     urlsToOpen.map((entry) => ({
       platform: entry.platform.name,
       url: entry.url,
+      chain: entry.chain,
     })),
   );
 
@@ -716,6 +1017,21 @@ export async function executePlatforms(
   );
 
   restoreClipboardIfNeeded();
+
+  const correctionCandidate =
+    detectedAddresses[0] ??
+    (anyPlatforms.length > 0
+      ? { address: rawInput, type: fallbackAnyAddressType }
+      : null);
+
+  if (correctionCandidate) {
+    void maybeRunSmartChainCorrection(config, {
+      address: correctionCandidate.address,
+      addressType: correctionCandidate.type,
+      pendingUrls: urlsToOpen,
+      openedUrls: [...opened],
+    });
+  }
 
   return {
     success: opened.length > 0,

@@ -11,6 +11,7 @@ import {
 } from "electron-devtools-installer";
 import type {
   AppConfig,
+  ExecutePlatformsRequest,
   PlatformConfig,
   PlatformShortcutConfig,
   RuntimeConfig,
@@ -143,7 +144,10 @@ async function executePlatform(platformId: string, shortcutIndex = 0) {
       platforms: [platformWithShortcut],
     };
 
-    await executePlatforms(platformOnlyConfig);
+    const trayExecuteOptions: ExecutePlatformsRequest = {
+      bypassAppFilters: true,
+    };
+    await executePlatforms(platformOnlyConfig, trayExecuteOptions);
   } catch (error) {
     console.error(`[rushmeme] tray launch for ${platformId} failed:`, error);
   }

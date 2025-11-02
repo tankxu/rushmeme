@@ -7,6 +7,7 @@ import { addConfigEventListeners } from "./config/config-listeners";
 import { addShellEventListeners } from "./shell/shell-listeners";
 import { addLanguageEventListeners } from "./language/language-listeners";
 import { addLicenseEventListeners } from "./license/license-listeners";
+import { addAppEventListeners } from "./app/app-listeners";
 
 type ListenerOptions = {
   onConfigUpdated?: (config: AppConfig) => void;
@@ -27,4 +28,5 @@ export default function registerListeners(
     onLanguageChanged: options?.onLanguageChanged,
   });
   addLicenseEventListeners();
+  addAppEventListeners();
 }
