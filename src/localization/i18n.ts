@@ -26,6 +26,7 @@ i18n.use(initReactI18next).init({
           downloadButtonLabel: "Download update",
           downloadUnavailable:
             "No compatible download link is available for this device.",
+          skipThisVersion: "Skip this version",
           closeButtonLabel: "Close",
         },
         common: {
@@ -217,6 +218,7 @@ i18n.use(initReactI18next).init({
           versionDialogDownloadHint: "将下载 {{platform}} 安装包。",
           downloadButtonLabel: "立即下载",
           downloadUnavailable: "当前设备暂未提供匹配的下载链接。",
+          skipThisVersion: "此版本不再提醒",
           closeButtonLabel: "关闭",
         },
         common: {

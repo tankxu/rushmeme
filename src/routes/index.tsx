@@ -1634,7 +1634,7 @@ function HomePage() {
       setEditingPlatformId(draft.id);
       setEditingPlatformDraft(draft);
     },
-    [ensureUniquePlatformName, isPro, platforms, t],
+    [ensureUniquePlatformName, platforms, t],
   );
 
   const handleEditPlatform = React.useCallback((platform: PlatformConfig) => {

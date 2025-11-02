@@ -2,6 +2,7 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -16,8 +17,18 @@ import type { AppLatestRelease, AppRuntimeInfo } from "@/types/app";
 const VERSION_CHECK_DELAY_MS = 5_000;
 const VERSION_CHECK_COOLDOWN_MS = 60_000;
 const VERSION_CHECK_AFTER_REPORT_MS = 3_000;
+const SKIP_VERSION_PREFIX = "rushmeme:skip-version:";
 
-type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
+function readSkipPreference(version: string | null): boolean {
+  if (!version) {
+    return false;
+  }
+  try {
+    return localStorage.getItem(`${SKIP_VERSION_PREFIX}${version}`) === "true";
+  } catch {
+    return false;
+  }
+}
 
 type ParsedIdentifier =
   | { type: "number"; value: number }
@@ -121,39 +132,6 @@ function compareSemver(a: string, b: string): number {
   } catch (error) {
     console.warn("[rushmeme] semver comparison failed", { error, a, b });
     return a.localeCompare(b);
-  }
-}
-
-function formatPlatformLabel(key: string, translate: TranslateFn): string {
-  const normalized = key.trim().toLowerCase();
-  switch (normalized) {
-    case "mac":
-    case "macos":
-      return translate("footer.platform.macosGeneric");
-    case "mac_arm":
-    case "mac-arm":
-    case "macos_arm":
-    case "macos-arm":
-    case "mac_arm64":
-      return translate("footer.platform.macosAppleSilicon");
-    case "mac_intel":
-    case "mac-intel":
-    case "macos_intel":
-    case "macos-intel":
-      return translate("footer.platform.macosIntel");
-    case "windows":
-    case "win":
-      return translate("footer.platform.windows");
-    case "linux":
-      return translate("footer.platform.linux");
-    case "android":
-      return translate("footer.platform.android");
-    case "ios":
-      return translate("footer.platform.ios");
-    default:
-      return translate(`footer.platform.${normalized}`, {
-        defaultValue: key.toUpperCase(),
-      });
   }
 }
 
@@ -310,6 +288,7 @@ export default function Footer() {
   const [runtimeInfo, setRuntimeInfo] = React.useState<AppRuntimeInfo | null>(
     null,
   );
+  const [skipForcedUpdate, setSkipForcedUpdate] = React.useState(false);
   const lastCheckRef = React.useRef<number>(0);
   const scheduledCheckRef = React.useRef<number | null>(null);
   const lastValidationRef = React.useRef<string | null>(null);
@@ -359,12 +338,17 @@ export default function Footer() {
       }
 
       if (compareSemver(release.version, currentVersion) > 0) {
+        const shouldSkip = release.force_update
+          ? readSkipPreference(release.version)
+          : false;
+        setSkipForcedUpdate(shouldSkip);
         setLatestRelease(release);
-        if (release.force_update) {
+        if (release.force_update && !shouldSkip) {
           setDialogOpen(true);
         }
       } else {
         setLatestRelease(null);
+        setSkipForcedUpdate(false);
       }
     } catch (error) {
       console.warn("[rushmeme] latest version check failed", error);
@@ -509,13 +493,24 @@ export default function Footer() {
   }, [isUpdateAvailable, latestRelease, runtimeInfo]);
 
   const downloadUrl = downloadTarget?.url ?? null;
-  const downloadPlatformLabel = React.useMemo(() => {
-    if (!downloadTarget) {
+  const displayVersion = React.useMemo(() => {
+    if (!currentVersion) {
       return null;
     }
-    return formatPlatformLabel(downloadTarget.key, t);
-  }, [downloadTarget, t]);
+    return currentVersion.replace(/^v/i, "");
+  }, [currentVersion]);
+  const showSkipOption = isUpdateAvailable && latestRelease?.force_update;
+  const currentReleaseVersion = latestRelease?.version ?? null;
 
+  React.useEffect(() => {
+    setSkipForcedUpdate(readSkipPreference(currentReleaseVersion));
+  }, [currentReleaseVersion]);
+
+  React.useEffect(() => {
+    if (isUpdateAvailable && latestRelease?.force_update && !skipForcedUpdate) {
+      setDialogOpen(true);
+    }
+  }, [isUpdateAvailable, latestRelease, skipForcedUpdate]);
   React.useEffect(() => {
     if (!isUpdateAvailable) {
       setDialogOpen(false);
@@ -555,21 +550,48 @@ export default function Footer() {
               </div>
             ) : null}
           </div>
-          <DialogFooter className="sm:flex-row sm:justify-end sm:gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setDialogOpen(false)}
-            >
-              {t("footer.closeButtonLabel")}
-            </Button>
-            <Button
-              type="button"
-              onClick={() => downloadUrl && handleOpenDownload(downloadUrl)}
-              disabled={!downloadUrl}
-            >
-              {t("footer.downloadButtonLabel")}
-            </Button>
+          <DialogFooter className="sm:flex-row sm:justify-between sm:gap-2">
+            {showSkipOption ? (
+              <label className="text-muted-foreground flex cursor-pointer items-center gap-2 text-xs tracking-wide select-none">
+                <Checkbox
+                  checked={skipForcedUpdate}
+                  onCheckedChange={(checked) => {
+                    const value = !!checked;
+                    setSkipForcedUpdate(value);
+                    if (!currentReleaseVersion) {
+                      return;
+                    }
+                    try {
+                      const storageKey = `${SKIP_VERSION_PREFIX}${currentReleaseVersion}`;
+                      if (value) {
+                        localStorage.setItem(storageKey, "true");
+                      } else {
+                        localStorage.removeItem(storageKey);
+                      }
+                    } catch {
+                      // ignore storage errors
+                    }
+                  }}
+                />
+                <span>{t("footer.skipThisVersion")}</span>
+              </label>
+            ) : null}
+            <div className="flex sm:flex-row sm:gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+              >
+                {t("footer.closeButtonLabel")}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => downloadUrl && handleOpenDownload(downloadUrl)}
+                disabled={!downloadUrl}
+              >
+                {t("footer.downloadButtonLabel")}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -600,13 +622,13 @@ export default function Footer() {
         </p>
         <div className="flex items-center gap-2">
           <span className="tracking-normal">
-            {currentVersion ? "Version: " + currentVersion : "Version: unknown"}
+            {displayVersion ? `VERSION: v${displayVersion}` : "VERSION: v--"}
           </span>
           {isUpdateAvailable ? (
             <button
               type="button"
               onClick={() => setDialogOpen(true)}
-              className="focus:outline-none"
+              className="relative top-[-1px] focus:outline-none"
             >
               <Badge className="bg-cyan-600 font-sans font-normal text-white hover:bg-cyan-500">
                 {t("footer.newVersionBadge")}

@@ -254,7 +254,8 @@ export function getLicenseSnapshot(): LicenseSnapshot {
 export function setLicenseSnapshot(
   snapshot: LicenseSnapshot,
 ): LicenseSnapshot {
-  const { deviceId: _ignored, ...rest } = snapshot;
+  const { deviceId: _deviceId, ...rest } = snapshot;
+  void _deviceId;
   const candidateStored = normalizePersistedSnapshot(rest);
   const normalized = normalizeRuntimeSnapshot(candidateStored);
   const filePath = getLicenseFilePath();
