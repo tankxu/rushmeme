@@ -30,6 +30,22 @@ function readSkipPreference(version: string | null): boolean {
   }
 }
 
+function updateSkipPreference(version: string | null, value: boolean): void {
+  if (!version) {
+    return;
+  }
+  try {
+    const storageKey = `${SKIP_VERSION_PREFIX}${version}`;
+    if (value) {
+      localStorage.setItem(storageKey, "true");
+    } else {
+      localStorage.removeItem(storageKey);
+    }
+  } catch {
+    // ignore persistence failures
+  }
+}
+
 type ParsedIdentifier =
   | { type: "number"; value: number }
   | { type: "string"; value: string };
@@ -552,25 +568,13 @@ export default function Footer() {
           </div>
           <DialogFooter className="sm:flex-row sm:justify-between sm:gap-2">
             {showSkipOption ? (
-              <label className="text-muted-foreground flex cursor-pointer items-center gap-2 text-xs tracking-wide select-none">
+              <label className="select-none text-muted-foreground flex cursor-pointer items-center gap-2 text-xs tracking-wide">
                 <Checkbox
                   checked={skipForcedUpdate}
                   onCheckedChange={(checked) => {
-                    const value = !!checked;
+                    const value = checked === true;
                     setSkipForcedUpdate(value);
-                    if (!currentReleaseVersion) {
-                      return;
-                    }
-                    try {
-                      const storageKey = `${SKIP_VERSION_PREFIX}${currentReleaseVersion}`;
-                      if (value) {
-                        localStorage.setItem(storageKey, "true");
-                      } else {
-                        localStorage.removeItem(storageKey);
-                      }
-                    } catch {
-                      // ignore storage errors
-                    }
+                    updateSkipPreference(currentReleaseVersion, value);
                   }}
                 />
                 <span>{t("footer.skipThisVersion")}</span>

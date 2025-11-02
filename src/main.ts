@@ -1,5 +1,5 @@
 import type { MenuItemConstructorOptions } from "electron";
-import { app, BrowserWindow, Menu, Tray, nativeImage } from "electron";
+import { app, BrowserWindow, Menu, Tray, nativeImage, shell } from "electron";
 import registerListeners from "./helpers/ipc/listeners-register";
 // "electron-squirrel-startup" seems broken when packaging with vite
 //import started from "electron-squirrel-startup";
@@ -327,6 +327,122 @@ function createTray() {
   });
 }
 
+function configureApplicationMenu() {
+  const isMac = process.platform === "darwin";
+
+  const macAppSubmenu = [
+    { role: "about" },
+    { type: "separator" as const },
+    { role: "services" },
+    { type: "separator" as const },
+    { role: "hide" },
+    { role: "hideOthers" },
+    { role: "unhide" },
+    { type: "separator" as const },
+    { role: "quit" },
+  ] satisfies MenuItemConstructorOptions[];
+
+  const fileSubmenu = [{ role: "quit" }] satisfies MenuItemConstructorOptions[];
+
+  const editSubmenu = (
+    isMac
+      ? [
+          { role: "undo" },
+          { role: "redo" },
+          { type: "separator" as const },
+          { role: "cut" },
+          { role: "copy" },
+          { role: "paste" },
+          { role: "pasteAndMatchStyle" },
+          { role: "delete" },
+          { role: "selectAll" },
+        ]
+      : [
+          { role: "undo" },
+          { role: "redo" },
+          { type: "separator" as const },
+          { role: "cut" },
+          { role: "copy" },
+          { role: "paste" },
+          { role: "delete" },
+          { role: "selectAll" },
+        ]
+  ) satisfies MenuItemConstructorOptions[];
+
+  const viewSubmenu = [
+    { role: "reload" },
+    { role: "forceReload" },
+    { role: "toggleDevTools" },
+    { type: "separator" as const },
+    { role: "resetZoom" },
+    { role: "zoomIn" },
+    { role: "zoomOut" },
+    { type: "separator" as const },
+    { role: "togglefullscreen" },
+  ] satisfies MenuItemConstructorOptions[];
+
+  const windowSubmenu = (
+    isMac
+      ? [
+          { role: "minimize" },
+          { role: "zoom" },
+          { type: "separator" as const },
+          { role: "front" },
+          { role: "window" },
+        ]
+      : [{ role: "minimize" }, { role: "zoom" }, { role: "close" }]
+  ) satisfies MenuItemConstructorOptions[];
+
+  const helpMenu: MenuItemConstructorOptions = {
+    label: "Help",
+    submenu: [
+      {
+        label: "RushMeme Help",
+        click: () => {
+          void shell.openExternal("https://rushmeme.vip/docs");
+        },
+      },
+      {
+        label: "Support",
+        click: () => {
+          void shell.openExternal("https://rushmeme.vip/docs#support");
+        },
+      },
+    ],
+  };
+
+  const template: MenuItemConstructorOptions[] = [
+    ...(isMac
+      ? [
+          {
+            label: app.name,
+            submenu: macAppSubmenu,
+          },
+        ]
+      : [
+          {
+            label: "File",
+            submenu: fileSubmenu,
+          },
+        ]),
+    {
+      label: "Edit",
+      submenu: editSubmenu,
+    },
+    {
+      label: "View",
+      submenu: viewSubmenu,
+    },
+    {
+      label: "Window",
+      submenu: windowSubmenu,
+    },
+    helpMenu,
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 function createWindow() {
   const preload = path.join(__dirname, "preload.js");
   const isDev = !app.isPackaged;
@@ -408,6 +524,7 @@ app.on("before-quit", () => {
 });
 
 app.whenReady().then(async () => {
+  configureApplicationMenu();
   createWindow();
   createTray();
   void licenseService.initialize();
