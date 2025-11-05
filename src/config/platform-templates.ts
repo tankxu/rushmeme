@@ -8,7 +8,7 @@ export const PLATFORM_TEMPLATES: PlatformTemplate[] = [
     shortcuts: [
       {
         tokenType: "BSC | Solana",
-        shortcut: "⌘⇧C",
+        shortcut: "⌃1",
       },
     ],
     urls: [
@@ -33,7 +33,7 @@ export const PLATFORM_TEMPLATES: PlatformTemplate[] = [
     shortcuts: [
       {
         tokenType: "Base | Solana",
-        shortcut: "⌃1",
+        shortcut: "⌃2",
       },
     ],
     urls: [
@@ -60,7 +60,7 @@ export const PLATFORM_TEMPLATES: PlatformTemplate[] = [
     shortcuts: [
       {
         tokenType: "Base | Solana",
-        shortcut: "⌃2",
+        shortcut: "⌃3",
       },
     ],
     urls: [
