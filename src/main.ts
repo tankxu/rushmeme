@@ -20,7 +20,6 @@ import { getConfig } from "@/helpers/ipc/config/config-store";
 import type { SupportedLocale } from "@/helpers/ipc/language/language-store";
 import { getPreferredLanguage } from "@/helpers/ipc/language/language-store";
 import { executePlatforms } from "@/helpers/ipc/config/platform-executor";
-import { getLicenseService } from "@/helpers/ipc/license/license-service";
 import { convertDisplayShortcutToAccelerator } from "@/utils/shortcut";
 
 const inDevelopment = process.env.NODE_ENV === "development";
@@ -34,7 +33,6 @@ if (process.platform === "darwin") {
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
-const licenseService = getLicenseService();
 
 const TRAY_TRANSLATIONS: Record<
   SupportedLocale,
@@ -526,14 +524,12 @@ async function installExtensions() {
 
 app.on("before-quit", () => {
   isQuitting = true;
-  licenseService.shutdown();
 });
 
 app.whenReady().then(async () => {
   configureApplicationMenu();
   createWindow();
   createTray();
-  void licenseService.initialize();
   await installExtensions();
 });
 

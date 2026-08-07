@@ -1,5 +1,5 @@
 import React from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import ToggleTheme from "@/components/ToggleTheme";
 import LangToggle from "@/components/LangToggle";
@@ -55,7 +55,6 @@ import type {
   PlatformConfig,
   PlatformShortcutConfig,
   PlatformTemplate,
-  LicenseSnapshot,
 } from "@/types/config";
 import {
   PLATFORM_TEMPLATES,
@@ -94,8 +93,6 @@ const SHIFTED_DIGIT_MAP: Record<string, string> = {
   "(": "9",
   ")": "0",
 };
-
-const ONE_DAY_MS = 86_400_000;
 
 function formatShortcutFromEvent(
   event: React.KeyboardEvent<HTMLInputElement>,
@@ -820,31 +817,10 @@ function removePlatformShortcutEntry(
 
 function HomePage() {
   const { t } = useTranslation();
-  const initialLicenseSnapshot =
-    typeof window !== "undefined"
-      ? (window.rushLicenseInitialState?.getSnapshot() ?? null)
-      : null;
   const initialDefaults = React.useMemo(() => createDefaultAppConfig(), []);
   const defaultsRef = React.useRef(initialDefaults);
-  const licenseRef = React.useRef(
-    initialLicenseSnapshot ?? defaultsRef.current.license,
-  );
-  const [licenseSnapshotState, setLicenseSnapshotState] = React.useState<
-    LicenseSnapshot
-  >(licenseRef.current);
-  const initialIsPro = (() => {
-    if (typeof window === "undefined") {
-      return false;
-    }
-    const runtimeFlag = window.rushProRuntime?.getFlag?.();
-    if (runtimeFlag !== undefined) {
-      return Boolean(runtimeFlag);
-    }
-    if (initialLicenseSnapshot) {
-      return initialLicenseSnapshot.status === "active";
-    }
-    return window.rushLicenseInitialState?.isPro() ?? false;
-  })();
+  // Rush Meme is open source: every feature is available without a license.
+  const initialIsPro = true;
   const [platforms, setPlatforms] = React.useState<PlatformConfig[]>(
     defaultsRef.current.platforms.map(normalizePlatformForState),
   );
@@ -877,8 +853,8 @@ function HomePage() {
   const hydrationRef = React.useRef(true);
   const hasStatusMounted = React.useRef(false);
   const hideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [upgradeDialogOpen, setUpgradeDialogOpen] = React.useState(false);
-  const [upgradeDialogVariant, setUpgradeDialogVariant] = React.useState<
+  const [, setUpgradeDialogOpen] = React.useState(false);
+  const [, setUpgradeDialogVariant] = React.useState<
     "multiPlatform" | "advancedConfig"
   >("multiPlatform");
   const [editingPlatformId, setEditingPlatformId] = React.useState<
@@ -932,24 +908,6 @@ function HomePage() {
     return computeShortcutConflicts([...others, editingPlatformDraft]);
   }, [editingPlatformDraft, platforms]);
 
-  const expiresAtValue = licenseSnapshotState.expiresAt;
-  let proExpiryNotice: string | null = null;
-  if (
-    isPro &&
-    typeof expiresAtValue === "string" &&
-    expiresAtValue.trim().length > 0
-  ) {
-    const expiryMs = Date.parse(expiresAtValue);
-    if (Number.isFinite(expiryMs)) {
-      const now = Date.now();
-      const diff = expiryMs - now;
-      if (diff > 0 && diff <= ONE_DAY_MS) {
-        proExpiryNotice = t("home.proExpiresTomorrow");
-      }
-    }
-  }
-  const proButtonLabel = proExpiryNotice ? `Pro · ${proExpiryNotice}` : "Pro";
-
   const previousIsProRef = React.useRef(isPro);
 
   React.useEffect(() => {
@@ -976,57 +934,6 @@ function HomePage() {
       setUpgradeDialogOpen(false);
     }
   }, [isPro]);
-
-  React.useEffect(() => {
-    if (!licenseApi?.watch) {
-      return;
-    }
-
-    let disposed = false;
-    let stop: (() => void) | undefined;
-
-    licenseApi
-      .watch((snapshot) => {
-        licenseRef.current = snapshot;
-        setLicenseSnapshotState(snapshot);
-        const nextIsPro = snapshot.status === "active";
-        setIsPro(nextIsPro);
-        if (snapshot.status === "active") {
-          setLicenseHeartbeatError(null);
-        }
-      })
-      .then((unsubscribe) => {
-        if (disposed) {
-          unsubscribe();
-          return;
-        }
-        stop = unsubscribe;
-      })
-      .catch((error) => {
-        console.error("Failed to subscribe to license updates", error);
-      });
-
-    return () => {
-      disposed = true;
-      if (stop) {
-        stop();
-      }
-    };
-  }, [licenseApi]);
-
-  React.useEffect(() => {
-    if (!licenseApi?.onHeartbeatError) {
-      return;
-    }
-
-    const unsubscribe = licenseApi.onHeartbeatError((details) => {
-      setLicenseHeartbeatError(details);
-    });
-
-    return () => {
-      unsubscribe?.();
-    };
-  }, [licenseApi]);
 
   React.useEffect(() => {
     if (editingMode !== "edit" || !editingPlatformId) {
@@ -1066,9 +973,6 @@ function HomePage() {
         }
         setPlatforms(config.platforms.map(normalizePlatformForState));
         setBrowserDelay(config.browserDelayMs ?? DEFAULT_BROWSER_DELAY);
-        // preserve license for saving
-        licenseRef.current = config.license;
-        setLicenseSnapshotState(config.license);
         setNotificationsEnabled(
           Boolean(
             config.notifications?.enabled ??
@@ -1935,28 +1839,6 @@ function HomePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog open={upgradeDialogOpen} onOpenChange={setUpgradeDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {t(`home.upgradeDialog.${upgradeDialogVariant}.title`)}
-            </DialogTitle>
-            <DialogDescription>
-              {t(`home.upgradeDialog.${upgradeDialogVariant}.description`)}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="sm:flex-row sm:justify-end sm:gap-2">
-            <DialogClose asChild>
-              <Button variant="outline">{t("buttons.cancel")}</Button>
-            </DialogClose>
-            <Button asChild>
-              <Link to="/upgrade" onClick={() => setUpgradeDialogOpen(false)}>
-                {t("buttons.upgrade")}
-              </Link>
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       <Dialog
         open={isEditingDialogOpen}
         onOpenChange={(open) => {
@@ -2218,17 +2100,9 @@ function HomePage() {
             <div className="flex items-center gap-2 self-end sm:self-auto">
               <LangToggle />
               <ToggleTheme />
-              <Button asChild variant="default" className="gap-2">
-                <Link to="/upgrade" className="flex items-center gap-2">
-                  {isPro ? (
-                    <>
-                      <BadgeCheck className="size-4" />
-                      <span>{proButtonLabel}</span>
-                    </>
-                  ) : (
-                    t("buttons.upgrade")
-                  )}
-                </Link>
+              <Button variant="default" className="gap-2" disabled>
+                <BadgeCheck className="size-4" />
+                <span>All features included</span>
               </Button>
             </div>
           </header>
