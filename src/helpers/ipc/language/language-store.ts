@@ -50,9 +50,7 @@ export function setStoredLanguage(locale: string): SupportedLocale {
   return normalized;
 }
 
-export function getPreferredLanguage(
-  fallbackLocale?: string,
-): SupportedLocale {
+export function getPreferredLanguage(fallbackLocale?: string): SupportedLocale {
   const stored = normalizeLocale(languageStore.get("locale"));
   if (stored) {
     return stored;

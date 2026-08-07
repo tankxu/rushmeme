@@ -17,7 +17,7 @@ import {
   detectAddressType,
   type AddressType,
 } from "@/utils/chain";
-import { getLicenseApiClient } from "@/helpers/ipc/license/license-client";
+import { detectEvmContractChains } from "./rpc-chain-detector";
 import {
   getActiveApplication,
   collectApplicationCandidates,
@@ -441,18 +441,8 @@ async function maybeRunSmartChainCorrection(
     return;
   }
 
-  const runtimeFlag = (config as { isPro?: boolean }).isPro;
-  if (runtimeFlag === false) {
-    return;
-  }
-
-  const licenseSnapshot = config.license;
-  if (!licenseSnapshot || licenseSnapshot.status !== "active") {
-    return;
-  }
-
-  const licenseKey = licenseSnapshot.key?.trim();
-  if (!licenseKey) {
+  const rpcKey = config.alchemyApiKey?.trim();
+  if (!rpcKey) {
     return;
   }
 
@@ -468,35 +458,25 @@ async function maybeRunSmartChainCorrection(
     return;
   }
 
-  const targetAddressType =
-    relevantUrls[0]?.addressType ?? context.addressType;
+  const targetAddressType = relevantUrls[0]?.addressType ?? context.addressType;
 
   try {
-    const client = getLicenseApiClient();
-    const result = await client.fetchTokenChains(licenseKey, keyword);
-
-    if (!result.ok) {
-      if (result.status === 429) {
-        console.info(
-          "[rushmeme] smart chain correction skipped: token lookup rate limited",
-        );
-      } else {
-        console.warn("[rushmeme] smart chain correction lookup failed", {
-          status: result.status,
-          code: result.code,
-          message: result.message,
-        });
-      }
-      return;
-    }
-
-    const chains = Array.isArray(result.data.chains)
-      ? result.data.chains
-      : [];
-
-    const normalizedChains = chains
-      .map((chain) => normalizeChainTokenKey(chain))
-      .filter(Boolean);
+    const candidateTokens = Array.from(
+      new Set(
+        relevantUrls.flatMap((pending) =>
+          pending.platform.urls.flatMap((entry) =>
+            parseChainSpec(entry.chain)
+              .map((token) => normalizeChainTokenKey(token))
+              .filter(Boolean),
+          ),
+        ),
+      ),
+    );
+    const normalizedChains = await detectEvmContractChains({
+      apiKey: rpcKey,
+      address: keyword,
+      candidateTokens,
+    });
 
     if (normalizedChains.length === 0) {
       return;
@@ -617,9 +597,8 @@ async function maybeRunSmartChainCorrection(
     }
 
     const displayChain =
-      chains.find(
-        (chain) => normalizeChainTokenKey(chain) === targetToken,
-      ) ?? targetToken;
+      chains.find((chain) => normalizeChainTokenKey(chain) === targetToken) ??
+      targetToken;
 
     const alreadyOpened = new Set(context.openedUrls);
     const candidates = candidatesByToken.get(targetToken) ?? [];
@@ -701,10 +680,7 @@ export async function executePlatforms(
       activeApp = await getActiveApplication();
       console.log("[rushmeme] active application info", { activeApp });
     } catch (error) {
-      console.warn(
-        "[rushmeme] failed to resolve active application:",
-        error,
-      );
+      console.warn("[rushmeme] failed to resolve active application:", error);
     }
   }
 
@@ -793,8 +769,7 @@ export async function executePlatforms(
       return {
         success: false,
         opened,
-        error:
-          "Execution skipped because the active application is excluded.",
+        error: "Execution skipped because the active application is excluded.",
         selectionCaptured: false,
         skippedBecauseExcluded: true,
       };
@@ -829,11 +804,7 @@ export async function executePlatforms(
     }
   }
 
-  if (
-    !bypassApplicationFilters &&
-    !excludeActiveApp &&
-    !includeActiveAppOnly
-  ) {
+  if (!bypassApplicationFilters && !excludeActiveApp && !includeActiveAppOnly) {
     console.log("[rushmeme] excluded applications disabled");
   }
 
@@ -968,7 +939,8 @@ export async function executePlatforms(
     }
     restoreClipboardIfNeeded();
     const firstAddress =
-      detectedAddresses[0]?.address ?? (anyPlatforms.length > 0 ? rawInput : undefined);
+      detectedAddresses[0]?.address ??
+      (anyPlatforms.length > 0 ? rawInput : undefined);
     return {
       success: false,
       opened,
@@ -1037,7 +1009,8 @@ export async function executePlatforms(
     success: opened.length > 0,
     opened,
     address:
-      detectedAddresses[0]?.address ?? (anyPlatforms.length > 0 ? rawInput : undefined),
+      detectedAddresses[0]?.address ??
+      (anyPlatforms.length > 0 ? rawInput : undefined),
     selectionCaptured,
   };
 }

@@ -31,6 +31,8 @@ export function exposeAppContext() {
         options,
       ) as Promise<FetchLatestResponse>,
     getRuntimeInfo: () =>
-      ipcRenderer.invoke(APP_GET_RUNTIME_INFO_CHANNEL) as Promise<AppRuntimeInfo>,
+      ipcRenderer.invoke(
+        APP_GET_RUNTIME_INFO_CHANNEL,
+      ) as Promise<AppRuntimeInfo>,
   });
 }

@@ -18,7 +18,9 @@ const WORD_MODIFIERS = new Map<string, string>([
   ["meta", "Super"],
 ]);
 
-export function convertDisplayShortcutToAccelerator(shortcut: string | undefined | null) {
+export function convertDisplayShortcutToAccelerator(
+  shortcut: string | undefined | null,
+) {
   if (!shortcut) {
     return undefined;
   }
@@ -44,7 +46,10 @@ export function convertDisplayShortcutToAccelerator(shortcut: string | undefined
 
     const withoutSymbols = trimmed.replace(/[⌘⌃⌥⇧\s+]/g, "");
     if (withoutSymbols) {
-      key = withoutSymbols.length === 1 ? withoutSymbols.toUpperCase() : withoutSymbols;
+      key =
+        withoutSymbols.length === 1
+          ? withoutSymbols.toUpperCase()
+          : withoutSymbols;
     }
   } else {
     const segments = trimmed.split(/\s*\+\s*/);

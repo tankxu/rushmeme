@@ -14,7 +14,6 @@ export type PlatformTemplate = {
   name: string;
   enabled: boolean;
   catalogOnly?: boolean;
-  requiresPro?: boolean;
   urls: PlatformUrlTemplate[];
   shortcuts: PlatformShortcutConfig[];
   variableType?: "CA" | "ANY";
@@ -31,48 +30,21 @@ export type NotificationConfig = {
   enabled: boolean;
 };
 
-export type LicenseStatus =
-  | "unknown"
-  | "missing"
-  | "pending"
-  | "active"
-  | "suspended"
-  | "revoked"
-  | "blocked"
-  | "expired"
-  | "error";
-
-export type LicenseSnapshot = {
-  key: string | null;
-  status: LicenseStatus;
-  deviceId: string;
-  deviceName?: string | null;
-  issuedTo?: string | null;
-  expiresAt?: string | null;
-  lastValidatedAt?: string | null;
-  nextCheckInAt?: string | null;
-  remainingActivations?: number | null;
-  lastErrorCode?: string | null;
-  lastErrorMessage?: string | null;
-};
-
 export type AppConfig = {
   platforms: PlatformConfig[];
   notifications: NotificationConfig;
   browserDelayMs: number;
   smartChainCorrectionEnabled: boolean;
+  alchemyApiKey: string;
   excludeActiveApp: boolean;
   includeActiveAppOnly: boolean;
   excludedApps: string[];
   includedApps: string[];
-  license: LicenseSnapshot;
 };
 
-export type RuntimeConfig = AppConfig & {
-  isPro: boolean;
-};
+export type RuntimeConfig = AppConfig;
 
-export type AppConfigSavePayload = Omit<AppConfig, "license">;
+export type AppConfigSavePayload = AppConfig;
 
 export type ExecutePlatformsRequest = {
   overrideAddress?: string;

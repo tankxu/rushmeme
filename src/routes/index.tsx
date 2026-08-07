@@ -374,7 +374,6 @@ function instantiatePlatformInstance(
     tokenType: primary.tokenType,
     shortcut: primary.shortcut,
     enabled: template.enabled,
-    requiresPro: template.requiresPro,
     shortcuts,
     urls: normalizedUrls.map((entry) => ({
       ...entry,
@@ -819,8 +818,6 @@ function HomePage() {
   const { t } = useTranslation();
   const initialDefaults = React.useMemo(() => createDefaultAppConfig(), []);
   const defaultsRef = React.useRef(initialDefaults);
-  // Rush Meme is open source: every feature is available without a license.
-  const initialIsPro = true;
   const [platforms, setPlatforms] = React.useState<PlatformConfig[]>(
     defaultsRef.current.platforms.map(normalizePlatformForState),
   );
@@ -832,6 +829,9 @@ function HomePage() {
   );
   const [smartChainCorrectionEnabled, setSmartChainCorrectionEnabled] =
     React.useState(defaultsRef.current.smartChainCorrectionEnabled);
+  const [alchemyApiKey, setAlchemyApiKey] = React.useState(
+    defaultsRef.current.alchemyApiKey,
+  );
   const [excludeActiveApp, setExcludeActiveApp] = React.useState(
     defaultsRef.current.excludeActiveApp,
   );
@@ -846,17 +846,12 @@ function HomePage() {
   );
   const [excludedAppDraft, setExcludedAppDraft] = React.useState("");
   const [includedAppDraft, setIncludedAppDraft] = React.useState("");
-  const [isPro, setIsPro] = React.useState(initialIsPro);
   const [loading, setLoading] = React.useState(true);
   const [status, setStatus] = React.useState<SaveStatus>("saved");
   const [statusVisible, setStatusVisible] = React.useState(false);
   const hydrationRef = React.useRef(true);
   const hasStatusMounted = React.useRef(false);
   const hideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [, setUpgradeDialogOpen] = React.useState(false);
-  const [, setUpgradeDialogVariant] = React.useState<
-    "multiPlatform" | "advancedConfig"
-  >("multiPlatform");
   const [editingPlatformId, setEditingPlatformId] = React.useState<
     string | null
   >(null);
@@ -869,10 +864,6 @@ function HomePage() {
   const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(
     null,
   );
-  const [licenseHeartbeatError, setLicenseHeartbeatError] = React.useState<{
-    code: string;
-    message: string;
-  } | null>(null);
   const isMac = React.useMemo(() => isMacOS(), []);
   const excludedAppsToggleDescription = t("home.excludedAppsToggleDescription");
   const showExcludedAppsToggleDescription =
@@ -908,32 +899,14 @@ function HomePage() {
     return computeShortcutConflicts([...others, editingPlatformDraft]);
   }, [editingPlatformDraft, platforms]);
 
-  const previousIsProRef = React.useRef(isPro);
-
-  React.useEffect(() => {
-    const previous = previousIsProRef.current;
-    if (!previous && isPro) {
-      setBrowserDelay(0);
-    }
-    previousIsProRef.current = isPro;
-  }, [isPro]);
-
   const configApi =
     typeof window !== "undefined" ? window.rushConfig : undefined;
-  const licenseApi =
-    typeof window !== "undefined" ? window.rushLicense : undefined;
 
   React.useEffect(() => {
     return () => {
       configApi?.resumeShortcuts?.();
     };
   }, [configApi]);
-
-  React.useEffect(() => {
-    if (isPro) {
-      setUpgradeDialogOpen(false);
-    }
-  }, [isPro]);
 
   React.useEffect(() => {
     if (editingMode !== "edit" || !editingPlatformId) {
@@ -968,9 +941,6 @@ function HomePage() {
           return;
         }
         hydrationRef.current = true;
-        if (config.isPro) {
-          setIsPro(true);
-        }
         setPlatforms(config.platforms.map(normalizePlatformForState));
         setBrowserDelay(config.browserDelayMs ?? DEFAULT_BROWSER_DELAY);
         setNotificationsEnabled(
@@ -983,6 +953,9 @@ function HomePage() {
           typeof config.smartChainCorrectionEnabled === "boolean"
             ? config.smartChainCorrectionEnabled
             : defaultsRef.current.smartChainCorrectionEnabled,
+        );
+        setAlchemyApiKey(
+          typeof config.alchemyApiKey === "string" ? config.alchemyApiKey : "",
         );
         setExcludeActiveApp(
           typeof config.excludeActiveApp === "boolean"
@@ -1037,6 +1010,7 @@ function HomePage() {
       },
       browserDelayMs: browserDelay,
       smartChainCorrectionEnabled,
+      alchemyApiKey,
       excludeActiveApp,
       includeActiveAppOnly,
       excludedApps,
@@ -1062,6 +1036,7 @@ function HomePage() {
     };
   }, [
     browserDelay,
+    alchemyApiKey,
     configApi,
     excludeActiveApp,
     excludedApps,
@@ -1125,12 +1100,6 @@ function HomePage() {
       return;
     }
 
-    if (!isPro) {
-      setUpgradeDialogVariant("advancedConfig");
-      setUpgradeDialogOpen(true);
-      return;
-    }
-
     setExcludedApps((previous) => {
       const exists = previous.some(
         (entry) =>
@@ -1144,7 +1113,7 @@ function HomePage() {
       return [...previous, candidate];
     });
     setExcludedAppDraft("");
-  }, [excludedAppDraft, isPro, setUpgradeDialogOpen, setUpgradeDialogVariant]);
+  }, [excludedAppDraft]);
 
   const handleRemoveExcludedApp = React.useCallback((value: string) => {
     setExcludedApps((previous) =>
@@ -1175,12 +1144,6 @@ function HomePage() {
       return;
     }
 
-    if (!isPro) {
-      setUpgradeDialogVariant("advancedConfig");
-      setUpgradeDialogOpen(true);
-      return;
-    }
-
     setIncludedApps((previous) => {
       const exists = previous.some(
         (entry) =>
@@ -1194,7 +1157,7 @@ function HomePage() {
       return [...previous, candidate];
     });
     setIncludedAppDraft("");
-  }, [includedAppDraft, isPro, setUpgradeDialogOpen, setUpgradeDialogVariant]);
+  }, [includedAppDraft]);
 
   const handleRemoveIncludedApp = React.useCallback((value: string) => {
     setIncludedApps((previous) =>
@@ -1236,51 +1199,33 @@ function HomePage() {
 
   const handleSmartChainCorrectionToggle = React.useCallback(
     (checked: boolean) => {
-      if (!isPro) {
-        setUpgradeDialogVariant("advancedConfig");
-        setUpgradeDialogOpen(true);
-        return;
-      }
-      setSmartChainCorrectionEnabled(checked);
+      setSmartChainCorrectionEnabled(
+        checked && alchemyApiKey.trim().length > 0,
+      );
     },
-    [isPro, setUpgradeDialogOpen, setUpgradeDialogVariant],
+    [alchemyApiKey],
   );
 
   const handleExcludeToggle = React.useCallback(
     (checked: boolean) => {
-      if (!isPro) {
-        setUpgradeDialogVariant("advancedConfig");
-        setUpgradeDialogOpen(true);
-        return;
-      }
       if (checked && includeActiveAppOnly) {
         setToggleConflictTarget("exclude");
         return;
       }
       setExcludeActiveApp(checked);
     },
-    [
-      includeActiveAppOnly,
-      isPro,
-      setUpgradeDialogOpen,
-      setUpgradeDialogVariant,
-    ],
+    [includeActiveAppOnly],
   );
 
   const handleIncludeToggle = React.useCallback(
     (checked: boolean) => {
-      if (!isPro) {
-        setUpgradeDialogVariant("advancedConfig");
-        setUpgradeDialogOpen(true);
-        return;
-      }
       if (checked && excludeActiveApp) {
         setToggleConflictTarget("include");
         return;
       }
       setIncludeActiveAppOnly(checked);
     },
-    [excludeActiveApp, isPro, setUpgradeDialogOpen, setUpgradeDialogVariant],
+    [excludeActiveApp],
   );
 
   const handleTogglePlatform = React.useCallback(
@@ -1291,23 +1236,12 @@ function HomePage() {
           return previous;
         }
 
-        if (
-          !isPro &&
-          checked &&
-          !target.enabled &&
-          previous.some((platform) => platform.id !== id && platform.enabled)
-        ) {
-          setUpgradeDialogVariant("multiPlatform");
-          setUpgradeDialogOpen(true);
-          return previous;
-        }
-
         return previous.map((platform) =>
           platform.id === id ? { ...platform, enabled: checked } : platform,
         );
       });
     },
-    [isPro, setUpgradeDialogOpen, setUpgradeDialogVariant],
+    [],
   );
 
   const handleTokenTypeChange = React.useCallback(
@@ -1358,9 +1292,6 @@ function HomePage() {
 
   const handleBrowserDelayChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
-      if (!isPro) {
-        return;
-      }
       const rawValue = event.target.value;
       if (rawValue.trim().length === 0) {
         setBrowserDelay(0);
@@ -1373,7 +1304,7 @@ function HomePage() {
       const milliseconds = Math.max(0, Math.round(parsedSeconds * 1000));
       setBrowserDelay(milliseconds);
     },
-    [isPro],
+    [],
   );
 
   const displayedDelaySeconds = React.useMemo(() => {
@@ -1580,15 +1511,10 @@ function HomePage() {
     if (!editingPlatformId) {
       return;
     }
-    if (!isPro) {
-      setUpgradeDialogVariant("advancedConfig");
-      setUpgradeDialogOpen(true);
-      return;
-    }
     setEditingPlatformDraft((previous) =>
       previous ? appendPlatformShortcutEntry(previous) : previous,
     );
-  }, [editingPlatformId, isPro, setUpgradeDialogOpen, setUpgradeDialogVariant]);
+  }, [editingPlatformId]);
 
   const handleDialogRemoveTokenShortcut = React.useCallback((index: number) => {
     setEditingPlatformDraft((previous) => {
@@ -1598,35 +1524,6 @@ function HomePage() {
       return removePlatformShortcutEntry(previous, index);
     });
   }, []);
-
-  const handleLicenseHeartbeatDismiss = React.useCallback(() => {
-    setLicenseHeartbeatError(null);
-  }, []);
-
-  const handleRetryLicenseValidation = React.useCallback(async () => {
-    if (!licenseApi?.validate) {
-      return;
-    }
-
-    try {
-      const result = await licenseApi.validate();
-      if (result.success) {
-        setLicenseHeartbeatError(null);
-      } else {
-        setLicenseHeartbeatError({
-          code: result.code ?? "validation_failed",
-          message:
-            result.message ?? t("home.licenseErrorDialog.genericMessage"),
-        });
-      }
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : t("home.licenseErrorDialog.genericMessage");
-      setLicenseHeartbeatError({ code: "network_error", message });
-    }
-  }, [licenseApi, t]);
 
   const handleShortcutKeyDown = React.useCallback(
     (
@@ -1721,16 +1618,12 @@ function HomePage() {
         );
       }
       const uniqueName = ensureUniquePlatformName(nextPlatform.name, previous);
-      const enabledCount = previous.filter(
-        (platform) => platform.enabled,
-      ).length;
-      const canEnableMore = isPro || enabledCount === 0;
       return [
         ...previous,
         {
           ...nextPlatform,
           name: uniqueName,
-          enabled: canEnableMore ? true : nextPlatform.enabled,
+          enabled: true,
         },
       ];
     });
@@ -1740,7 +1633,6 @@ function HomePage() {
     editingPlatformId,
     ensureUniquePlatformName,
     handleDialogClose,
-    isPro,
   ]);
 
   const statusContent = {
@@ -1772,38 +1664,6 @@ function HomePage() {
           </div>
         </div>
       )}
-      <Dialog
-        open={Boolean(licenseHeartbeatError)}
-        onOpenChange={(open) => {
-          if (!open) {
-            handleLicenseHeartbeatDismiss();
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("home.licenseErrorDialog.title")}</DialogTitle>
-            <DialogDescription>
-              {t("home.licenseErrorDialog.description")}
-            </DialogDescription>
-          </DialogHeader>
-          {licenseHeartbeatError?.message ? (
-            <p className="text-destructive text-sm">
-              {licenseHeartbeatError.message}
-            </p>
-          ) : null}
-          <DialogFooter className="sm:flex-row sm:justify-end sm:gap-2">
-            <Button variant="outline" onClick={handleLicenseHeartbeatDismiss}>
-              {t("home.licenseErrorDialog.dismiss")}
-            </Button>
-            {licenseApi?.validate ? (
-              <Button onClick={handleRetryLicenseValidation}>
-                {t("home.licenseErrorDialog.retry")}
-              </Button>
-            ) : null}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       <Dialog
         open={toggleConflictTarget !== null}
         onOpenChange={(open) => {
@@ -2349,14 +2209,9 @@ function HomePage() {
                 <CardContent className="space-y-8">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
                     <div className="space-y-1 sm:w-1/2">
-                      <div className="flex items-center gap-2">
-                        <p className="text-primary text-sm font-semibold">
-                          {t("home.browserDelayTitle")}
-                        </p>
-                        <span className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase">
-                          Pro
-                        </span>
-                      </div>
+                      <p className="text-primary text-sm font-semibold">
+                        {t("home.browserDelayTitle")}
+                      </p>
                       <p className="text-muted-foreground text-xs">
                         {t("home.browserDelayDescription")}
                       </p>
@@ -2369,17 +2224,11 @@ function HomePage() {
                           step={0.1}
                           value={displayedDelaySeconds}
                           onChange={handleBrowserDelayChange}
-                          disabled={!isPro}
                           className="text-left"
                           aria-label={t("home.browserDelayTitle")}
                         />
                         <InputGroupAddon align="inline-end">s</InputGroupAddon>
                       </InputGroup>
-                      {!isPro ? (
-                        <Badge variant="secondary" className="py-1">
-                          {t("home.delayBadge")}
-                        </Badge>
-                      ) : null}
                     </div>
                   </div>
 
@@ -2409,19 +2258,36 @@ function HomePage() {
 
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
                     <div className="space-y-1 sm:w-1/2">
-                      <div className="flex items-center gap-2">
-                        <p className="text-primary text-sm font-semibold">
-                          {t("home.smartChainCorrectionTitle")}
-                        </p>
-                        <span className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase">
-                          Pro
-                        </span>
-                      </div>
+                      <p className="text-primary text-sm font-semibold">
+                        {t("home.smartChainCorrectionTitle")}
+                      </p>
                       <p className="text-muted-foreground text-xs">
                         {t("home.smartChainCorrectionDescription")}
                       </p>
                     </div>
-                    <div className="sm:w-1/2">
+                    <div className="space-y-3 sm:w-1/2">
+                      <div className="border-border/60 bg-background/70 space-y-2 rounded-lg border p-3">
+                        <Label htmlFor="alchemy-api-key">
+                          {t("home.alchemyApiKeyLabel")}
+                        </Label>
+                        <Input
+                          id="alchemy-api-key"
+                          type="password"
+                          value={alchemyApiKey}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setAlchemyApiKey(value);
+                            if (!value.trim()) {
+                              setSmartChainCorrectionEnabled(false);
+                            }
+                          }}
+                          placeholder={t("home.alchemyApiKeyPlaceholder")}
+                          autoComplete="off"
+                        />
+                        <p className="text-muted-foreground text-xs">
+                          {t("home.alchemyApiKeyDescription")}
+                        </p>
+                      </div>
                       <div className="border-border/60 bg-background/70 flex items-center justify-between rounded-lg border p-3">
                         <p className="text-sm font-medium">
                           {t("home.smartChainCorrectionToggleLabel")}
@@ -2429,7 +2295,7 @@ function HomePage() {
                         <Switch
                           checked={smartChainCorrectionEnabled}
                           onCheckedChange={handleSmartChainCorrectionToggle}
-                          disabled={!isPro}
+                          disabled={!alchemyApiKey.trim()}
                         />
                       </div>
                     </div>
@@ -2437,14 +2303,9 @@ function HomePage() {
 
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
                     <div className="space-y-1 sm:w-1/2">
-                      <div className="flex items-center gap-2">
-                        <p className="text-primary text-sm font-semibold">
-                          {t("home.excludedAppsTitle")}
-                        </p>
-                        <span className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase">
-                          Pro
-                        </span>
-                      </div>
+                      <p className="text-primary text-sm font-semibold">
+                        {t("home.excludedAppsTitle")}
+                      </p>
                       <p className="text-muted-foreground text-xs">
                         {t("home.excludedAppsDescription")}
                       </p>
@@ -2464,7 +2325,6 @@ function HomePage() {
                         <Switch
                           checked={excludeActiveApp}
                           onCheckedChange={handleExcludeToggle}
-                          disabled={!isPro}
                         />
                       </div>
                       {excludeActiveApp ? (
@@ -2524,14 +2384,9 @@ function HomePage() {
 
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
                     <div className="space-y-1 sm:w-1/2">
-                      <div className="flex items-center gap-2">
-                        <p className="text-primary text-sm font-semibold">
-                          {t("home.includedAppsTitle")}
-                        </p>
-                        <span className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase">
-                          Pro
-                        </span>
-                      </div>
+                      <p className="text-primary text-sm font-semibold">
+                        {t("home.includedAppsTitle")}
+                      </p>
                       <p className="text-muted-foreground text-xs">
                         {t("home.includedAppsDescription")}
                       </p>
@@ -2551,7 +2406,6 @@ function HomePage() {
                         <Switch
                           checked={includeActiveAppOnly}
                           onCheckedChange={handleIncludeToggle}
-                          disabled={!isPro}
                         />
                       </div>
                       {includeActiveAppOnly ? (

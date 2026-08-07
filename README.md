@@ -12,7 +12,20 @@ All features are included for everyone: no account, payment, license key, or fea
 - Run from the system tray or menu bar with per-platform actions.
 - Persist platform settings and language preferences locally.
 - Create custom platforms, URL templates, chains, and shortcuts.
+- Correct EVM chains locally with your own Alchemy API key.
 - Support macOS and Windows.
+
+## Network and privacy
+
+RushMeme has no account, licensing, payment, telemetry, or application backend.
+Normal shortcut execution opens only the platform URLs you configure. Smart chain
+correction is optional: when enabled, the desktop app sends the selected contract
+address directly to supported Alchemy RPC endpoints using the API key you provide.
+The key is stored in the app's local settings and is never sent to RushMeme.
+
+The update checker reads the latest public release from GitHub Releases. Disabling
+smart chain correction leaves platform navigation and update checks as the only
+network activity initiated by RushMeme itself.
 
 ## Getting started
 

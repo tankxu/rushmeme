@@ -10,7 +10,7 @@
   --color-ring: var(--color-cyan-400);
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
-  
+
   --color-brand: var(--color-cyan-500);
 
   --color-primary: hsl(var(--primary));
@@ -185,7 +185,7 @@
     @apply overflow-hidden;
   }
   .draglayer {
-    @apply bg-transparent h-10 flex items-center;
+    @apply flex h-10 items-center bg-transparent;
     -webkit-app-region: drag;
   }
   button {

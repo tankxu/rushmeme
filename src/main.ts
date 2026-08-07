@@ -403,13 +403,13 @@ function configureApplicationMenu() {
       {
         label: "RushMeme Help",
         click: () => {
-          void shell.openExternal("https://rushmeme.vip/docs");
+          void shell.openExternal("https://github.com/tankxu/rushmeme#readme");
         },
       },
       {
         label: "Support",
         click: () => {
-          void shell.openExternal("https://rushmeme.vip/docs#support");
+          void shell.openExternal("https://github.com/tankxu/rushmeme/issues");
         },
       },
     ],

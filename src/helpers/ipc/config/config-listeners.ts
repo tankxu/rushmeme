@@ -19,7 +19,6 @@ import type {
   PlatformConfig,
 } from "@/types/config";
 import { convertDisplayShortcutToAccelerator } from "@/utils/shortcut";
-import { getLicenseService } from "@/helpers/ipc/license/license-service";
 
 type ShortcutRegistry = {
   accelerator: string;
@@ -52,15 +51,16 @@ function buildShortcutRegistry(config: AppConfig): ShortcutRegistry[] {
     if (!platform.enabled) {
       continue;
     }
-    const shortcuts = Array.isArray(platform.shortcuts) && platform.shortcuts.length > 0
-      ? platform.shortcuts
-      : [
-          {
-            tokenType: platform.tokenType ?? "",
-            shortcut: platform.shortcut ?? "",
-            accelerator: platform.accelerator,
-          },
-        ];
+    const shortcuts =
+      Array.isArray(platform.shortcuts) && platform.shortcuts.length > 0
+        ? platform.shortcuts
+        : [
+            {
+              tokenType: platform.tokenType ?? "",
+              shortcut: platform.shortcut ?? "",
+              accelerator: platform.accelerator,
+            },
+          ];
 
     shortcuts.forEach((entry, index) => {
       if (!entry.shortcut && !entry.accelerator) {
@@ -235,10 +235,7 @@ function registerPlatformShortcuts(config: AppConfig) {
         );
       }
     } catch (error) {
-      console.error(
-        `Failed to register shortcut ${accelerator}:`,
-        error,
-      );
+      console.error(`Failed to register shortcut ${accelerator}:`, error);
     }
   }
 }
@@ -568,7 +565,11 @@ function buildLinuxKeySequence(accelerator: string): string | null {
   if (modifierSet.has("alt") || modifierSet.has("option")) {
     modifiers.push("alt");
   }
-  if (modifierSet.has("super") || modifierSet.has("meta") || modifierSet.has("win")) {
+  if (
+    modifierSet.has("super") ||
+    modifierSet.has("meta") ||
+    modifierSet.has("win")
+  ) {
     modifiers.push("super");
   }
 
@@ -652,7 +653,9 @@ function buildLinuxKeySequence(accelerator: string): string | null {
   return sequenceParts.join("+");
 }
 
-async function dispatchAcceleratorToSystem(accelerator: string): Promise<boolean> {
+async function dispatchAcceleratorToSystem(
+  accelerator: string,
+): Promise<boolean> {
   try {
     if (process.platform === "darwin") {
       const script = buildMacRelayScript(accelerator);
@@ -746,9 +749,9 @@ export function addConfigEventListeners(
     CONFIG_SAVE_CHANNEL,
     (_event, rawConfig: AppConfigSavePayload) => {
       const saved = saveConfig(rawConfig);
-    registerPlatformShortcuts(saved);
-    options?.onConfigUpdated?.(saved);
-    return;
+      registerPlatformShortcuts(saved);
+      options?.onConfigUpdated?.(saved);
+      return;
     },
   );
 
@@ -773,14 +776,6 @@ export function addConfigEventListeners(
       registerPlatformShortcuts(lastConfig);
     }
     event.returnValue = true;
-  });
-
-  const licenseService = getLicenseService();
-  licenseService.on("change", () => {
-    const config = getConfig();
-    lastConfig = config;
-    registerPlatformShortcuts(config);
-    options?.onConfigUpdated?.(config);
   });
 
   app.whenReady().then(() => {

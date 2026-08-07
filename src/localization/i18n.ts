@@ -8,11 +8,7 @@ i18n.use(initReactI18next).init({
       translation: {
         appName: "Rush Meme",
         titleHomePage: "Platform Configuration",
-        titleSecondPage: "Upgrade to Pro",
         buttons: {
-          upgrade: "Upgrade to Pro",
-          purchase: "Purchase license",
-          redeem: "Activate Pro",
           cancel: "Cancel",
           save: "Save changes",
         },
@@ -54,14 +50,16 @@ i18n.use(initReactI18next).init({
             "Control how quickly browser tabs fire and when notifications keep the desk in sync.",
           browserDelayTitle: "Browser launch delay",
           browserDelayDescription:
-            "Define a delay before opening browser tabs; free users wait for the countdown, while Pro users launch instantly.",
+            "Define an optional delay before opening browser tabs.",
           browserDelayValue: "{{value}} ms delay",
-          delayBadge: "Instant for Pro",
-          proExpiresTomorrow: "Expires tomorrow",
           smartChainCorrectionTitle: "Smart chain correction",
           smartChainCorrectionDescription:
-            "Double-checks the detected chain against opened URLs and nudges the right destination when they mismatch.",
+            "Checks the contract directly across supported Alchemy RPC networks and opens the matching destination.",
           smartChainCorrectionToggleLabel: "Enable smart correction",
+          alchemyApiKeyLabel: "Alchemy RPC Key",
+          alchemyApiKeyPlaceholder: "Paste your Alchemy API key…",
+          alchemyApiKeyDescription:
+            "Stored only on this device and sent directly to Alchemy. Rush Meme does not proxy or collect it.",
           notificationsTitle: "Notifications",
           notificationsDescription:
             "Decide when Rush Meme should display OS notifications after an execution attempt.",
@@ -106,7 +104,6 @@ i18n.use(initReactI18next).init({
             shortcutLabel: "Shortcut",
             urlsLabel: "URL templates",
             helper: "Use {CA} as the placeholder for the contract address.",
-            proTag: "Pro",
             customTag: "Custom",
             delete: "Delete",
           },
@@ -132,68 +129,6 @@ i18n.use(initReactI18next).init({
             deleteConfirmCancel: "Cancel",
             deleteConfirmAction: "Delete",
           },
-          upgradeDialog: {
-            multiPlatform: {
-              title: "Upgrade to launch more platforms",
-              description:
-                "Free plan opens one platform at a time. Go Pro to launch multiple platforms together with zero wait.",
-            },
-            advancedConfig: {
-              title: "Upgrade to unlock advanced configuration",
-              description:
-                "Go Pro to add more token types, manage excluded apps, and remove launch delays altogether.",
-            },
-          },
-          licenseErrorDialog: {
-            title: "License validation failed",
-            description:
-              "Rush Meme could not reach the license server. Restore your connection and retry to keep Pro features active.",
-            retry: "Retry validation",
-            dismiss: "Dismiss",
-            genericMessage: "Unable to validate the license right now.",
-          },
-        },
-        pro: {
-          heading: "Upgrade to Rush Meme Pro",
-          subtitle:
-            "Unlock zero-delay launches, unlimited templates, and priority support so your desk moves faster.",
-          priceLabel: "Launch price",
-          priceValue: "16 USDT / limited lifetime license",
-          devicesInfo:
-            "Includes future feature updates. Each key activates 1 device.",
-          featuresTitle: "Everything in Pro",
-          featuresList: [
-            "Zero-delay browser launches",
-            "Launch unlimited platforms at once",
-            "Configure excluded apps or an allowlist",
-            "Priority support within 24 hours",
-            "Early access to the latest features",
-          ],
-          serialTitle: "Have a serial key?",
-          serialDescription: "Enter your key to activate Pro instantly.",
-          serialPlaceholder: "XXXX-XXXX-XXXX-XXXX",
-          serialHelper:
-            "We’ll validate the key online. Make sure you’re connected.",
-          serialSuccess: "Pro activated!",
-          serialDate: "Your Pro license is valid until {{date}}.",
-          serialDataForever: "Your Pro license is lifetime.",
-          actions: {
-            purchase: "Purchase license",
-            redeem: "Activate Pro",
-            removeDevice: "Remove device binding",
-          },
-          supportTitle: "Need another payment method?",
-          supportDescription:
-            "We default to crypto payments. Need something else? Email support@rush meme.vip — we accept PayPal, bank transfer, Alipay, WeChat Pay, and PromptPay.",
-          serialRequired: "Enter your license key to activate.",
-          errors: {
-            unavailable: "Activation service unavailable.",
-            activationFailed: "Unable to activate. Please try again.",
-            deactivationFailed:
-              "Unable to remove activation. Please try again.",
-            activationLimitReached:
-              "Activation limit reached. Remove another device then try again.",
-          },
         },
       },
     },
@@ -201,11 +136,7 @@ i18n.use(initReactI18next).init({
       translation: {
         appName: "Rush Meme",
         titleHomePage: "平台配置",
-        titleSecondPage: "升级至 Pro",
         buttons: {
-          upgrade: "升级到 Pro",
-          purchase: "购买授权",
-          redeem: "激活 Pro",
           cancel: "取消",
           save: "保存修改",
         },
@@ -244,15 +175,16 @@ i18n.use(initReactI18next).init({
           executionCardDescription:
             "设定标签页的启动延时，并决定 Rush Meme 何时提醒团队。",
           browserDelayTitle: "浏览器启动延时",
-          browserDelayDescription:
-            "为打开浏览器标签设置延时。免费用户需等待计时完成，升级 Pro 后即可立刻打开。",
+          browserDelayDescription: "设置打开浏览器标签前的可选延时。",
           browserDelayValue: "当前延时 {{value}} 毫秒",
-          delayBadge: "升级 Pro 享 0 延时",
-          proExpiresTomorrow: "明日到期",
           smartChainCorrectionTitle: "智能公链纠正",
           smartChainCorrectionDescription:
-            "自动检测 CA 所属公链，校验是否为已开启 URL，不一致时打开正确 URL。",
+            "通过 Alchemy RPC 在客户端直接检测合约所属公链，不再经过 Rush Meme 后端。",
           smartChainCorrectionToggleLabel: "启用",
+          alchemyApiKeyLabel: "Alchemy RPC Key",
+          alchemyApiKeyPlaceholder: "粘贴你的 Alchemy API Key…",
+          alchemyApiKeyDescription:
+            "仅保存在本机并直接发送给 Alchemy，Rush Meme 不会代理或收集此 Key。",
           notificationsTitle: "通知提醒",
           notificationsDescription: "选择在执行成功或失败时是否展示系统通知。",
           notificationsToggleLabel: "开启系统通知",
@@ -294,7 +226,6 @@ i18n.use(initReactI18next).init({
             shortcutLabel: "快捷键",
             urlsLabel: "按链路设置 URL 模板",
             helper: "在模板中使用 {CA} 作为合约地址占位符。",
-            proTag: "Pro",
             customTag: "自定义",
             delete: "删除",
           },
@@ -319,65 +250,6 @@ i18n.use(initReactI18next).init({
               "此操作无法撤销，平台及其快捷键都会从配置中移除。",
             deleteConfirmCancel: "取消",
             deleteConfirmAction: "删除",
-          },
-          upgradeDialog: {
-            multiPlatform: {
-              title: "升级 Pro 解锁多平台同时打开",
-              description:
-                "免费版一次只能打开一个平台。升级 Pro 后即可同时启动多个平台并享受零延时。",
-            },
-            advancedConfig: {
-              title: "升级后解锁高级配置",
-              description:
-                "升级 Pro 后即可新增更多 token 类型、管理排除应用，并享受零延时启动。",
-            },
-          },
-          licenseErrorDialog: {
-            title: "授权验证失败",
-            description:
-              "Rush Meme 无法连接授权服务器，请检查网络或稍后再试，以继续使用 Pro 功能。",
-            retry: "重新验证",
-            dismiss: "稍后再试",
-            genericMessage: "当前无法验证授权。",
-          },
-        },
-        pro: {
-          heading: "升级 Rush Meme Pro",
-          subtitle:
-            "解锁零延时打开、多平台模板和优先客服，以最快的速度开始交易。",
-          priceLabel: "首发价格",
-          priceValue: "16 USDT / 限时永久授权",
-          devicesInfo: "包含后续功能更新，每个序列号可绑定 1 台设备。",
-          featuresTitle: "Pro 版本包含",
-          featuresList: [
-            "零延时浏览器启动体验",
-            "支持同时开启不限数量的平台",
-            "启用忽略应用或应用白名单",
-            "24 小时内优先客服响应",
-            "抢先体验最新功能",
-          ],
-          serialTitle: "已有序列号？",
-          serialDescription: "输入序列号即可立即激活 Pro 功能。",
-          serialPlaceholder: "XXXX-XXXX-XXXX-XXXX",
-          serialHelper: "激活时需要联网，请确保网络可用。",
-          serialSuccess: "激活成功！",
-          serialDate: "您的 Pro 授权有效期至 {{date}}。",
-          serialDataForever: "您的 Pro 授权为永久授权。",
-          actions: {
-            purchase: "购买授权",
-            redeem: "立即激活",
-            removeDevice: "移除设备绑定",
-          },
-          supportTitle: "需要其他支付方式？",
-          supportDescription:
-            "默认使用加密货币支持，如需其它支付方式，欢迎邮件联系 support@rush meme.vip。支持 PayPal、银行卡转账、支付宝、微信支付、PromptPay。",
-          serialRequired: "请输入授权序列号后再激活。",
-          errors: {
-            unavailable: "激活服务暂不可用。",
-            activationFailed: "激活失败，请稍后再试。",
-            deactivationFailed: "解除绑定失败，请稍后再试。",
-            activationLimitReached:
-              "激活额度已用尽，请解除其他设备绑定后再试。",
           },
         },
       },
