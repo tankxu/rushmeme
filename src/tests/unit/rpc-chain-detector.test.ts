@@ -1,5 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
-import { detectEvmContractChains } from "@/helpers/ipc/config/rpc-chain-detector";
+import {
+  detectEvmContractChains,
+  testAlchemyApiKey,
+} from "@/helpers/ipc/config/rpc-chain-detector";
 
 const ADDRESS = "0xa50a51c09a5c451c52bb714527e1974b686d8e77";
 
@@ -37,5 +40,41 @@ describe("detectEvmContractChains", () => {
 
     expect(result).toEqual([]);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe("testAlchemyApiKey", () => {
+  test("accepts a key when Alchemy returns a block number", async () => {
+    const fetchImpl = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x1234" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const result = await testAlchemyApiKey({
+      apiKey: "valid-user-key",
+      fetchImpl,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test("reports an unauthorized key", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response("Unauthorized", { status: 401 }),
+    ) as typeof fetch;
+
+    const result = await testAlchemyApiKey({
+      apiKey: "invalid-user-key",
+      fetchImpl,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 401,
+      reason: "unauthorized",
+    });
   });
 });

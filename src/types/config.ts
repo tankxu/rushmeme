@@ -46,6 +46,17 @@ export type RuntimeConfig = AppConfig;
 
 export type AppConfigSavePayload = AppConfig;
 
+export type AlchemyApiKeyTestResult =
+  | {
+      ok: true;
+      latencyMs: number;
+    }
+  | {
+      ok: false;
+      status?: number;
+      reason: "missing_key" | "unauthorized" | "rate_limited" | "unreachable";
+    };
+
 export type ExecutePlatformsRequest = {
   overrideAddress?: string;
   bypassAppFilters?: boolean;

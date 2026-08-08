@@ -93,16 +93,15 @@ function serializePlatformForStore(platform: PlatformConfig): PlatformConfig {
 function serializeAppConfigForStore(
   config: AppConfig | StoredAppConfig,
 ): StoredAppConfig {
+  const alchemyApiKey =
+    typeof config.alchemyApiKey === "string" ? config.alchemyApiKey.trim() : "";
+
   return {
     platforms: config.platforms.map(serializePlatformForStore),
     notifications: config.notifications,
-    smartChainCorrectionEnabled: Boolean(
-      (config as AppConfig).smartChainCorrectionEnabled,
-    ),
-    alchemyApiKey:
-      typeof (config as AppConfig).alchemyApiKey === "string"
-        ? (config as AppConfig).alchemyApiKey.trim()
-        : "",
+    smartChainCorrectionEnabled:
+      Boolean(config.smartChainCorrectionEnabled) && Boolean(alchemyApiKey),
+    alchemyApiKey,
     browserDelayMs: sanitizeBrowserDelay(config.browserDelayMs, 0),
     excludeActiveApp:
       typeof config.excludeActiveApp === "boolean"
@@ -288,21 +287,26 @@ function normalizeStoredConfig(config: ExtendedConfigLike): StoredAppConfig {
     (config as unknown as { notifications?: unknown }).notifications,
     defaults.notifications,
   );
+  const alchemyApiKey =
+    typeof (config as { alchemyApiKey?: unknown }).alchemyApiKey === "string"
+      ? (config as { alchemyApiKey: string }).alchemyApiKey.trim()
+      : "";
+  const requestedSmartCorrection =
+    typeof (config as { smartChainCorrectionEnabled?: unknown })
+      .smartChainCorrectionEnabled === "boolean"
+      ? Boolean(
+          (config as { smartChainCorrectionEnabled?: boolean })
+            .smartChainCorrectionEnabled,
+        )
+      : defaults.smartChainCorrectionEnabled;
 
   return {
     browserDelayMs,
     notifications,
     platforms,
     smartChainCorrectionEnabled:
-      typeof (config as { smartChainCorrectionEnabled?: unknown })
-        .smartChainCorrectionEnabled === "boolean"
-        ? ((config as { smartChainCorrectionEnabled?: boolean })
-            .smartChainCorrectionEnabled as boolean)
-        : defaults.smartChainCorrectionEnabled,
-    alchemyApiKey:
-      typeof (config as { alchemyApiKey?: unknown }).alchemyApiKey === "string"
-        ? (config as { alchemyApiKey: string }).alchemyApiKey.trim()
-        : "",
+      requestedSmartCorrection && Boolean(alchemyApiKey),
+    alchemyApiKey,
     excludeActiveApp: normalizeExcludeActiveApp(
       (config as unknown as { excludeActiveApp?: unknown }).excludeActiveApp,
       defaults.excludeActiveApp,

@@ -41,7 +41,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   AlertCircle,
-  BadgeCheck,
   CheckCircle2,
   Loader2,
   Plus,
@@ -70,6 +69,12 @@ import {
 
 type SaveStatus = "saved" | "saving" | "failed";
 
+type RpcKeyTestState = {
+  status: "idle" | "testing" | "success" | "failed";
+  latencyMs?: number;
+  reason?: "missing_key" | "unauthorized" | "rate_limited" | "unreachable";
+};
+
 type ShortcutLabels = {
   meta: string;
   ctrl: string;
@@ -80,6 +85,14 @@ type ShortcutLabels = {
 type ShortcutConflictMap = Map<string, Map<number, string[]>>;
 
 const MODIFIER_KEYS = new Set(["Meta", "Control", "Shift", "Alt"]);
+
+function maskApiKey(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= 8) {
+    return `${trimmed.slice(0, 2)}••••${trimmed.slice(-2)}`;
+  }
+  return `${trimmed.slice(0, 4)}••••••••${trimmed.slice(-4)}`;
+}
 
 const SHIFTED_DIGIT_MAP: Record<string, string> = {
   "!": "1",
@@ -832,6 +845,12 @@ function HomePage() {
   const [alchemyApiKey, setAlchemyApiKey] = React.useState(
     defaultsRef.current.alchemyApiKey,
   );
+  const [alchemyApiKeyDraft, setAlchemyApiKeyDraft] = React.useState("");
+  const [smartCorrectionEditing, setSmartCorrectionEditing] =
+    React.useState(false);
+  const [rpcKeyTest, setRpcKeyTest] = React.useState<RpcKeyTestState>({
+    status: "idle",
+  });
   const [excludeActiveApp, setExcludeActiveApp] = React.useState(
     defaultsRef.current.excludeActiveApp,
   );
@@ -951,10 +970,14 @@ function HomePage() {
         );
         setSmartChainCorrectionEnabled(
           typeof config.smartChainCorrectionEnabled === "boolean"
-            ? config.smartChainCorrectionEnabled
+            ? config.smartChainCorrectionEnabled &&
+                Boolean(config.alchemyApiKey?.trim())
             : defaultsRef.current.smartChainCorrectionEnabled,
         );
         setAlchemyApiKey(
+          typeof config.alchemyApiKey === "string" ? config.alchemyApiKey : "",
+        );
+        setAlchemyApiKeyDraft(
           typeof config.alchemyApiKey === "string" ? config.alchemyApiKey : "",
         );
         setExcludeActiveApp(
@@ -1199,12 +1222,60 @@ function HomePage() {
 
   const handleSmartChainCorrectionToggle = React.useCallback(
     (checked: boolean) => {
-      setSmartChainCorrectionEnabled(
-        checked && alchemyApiKey.trim().length > 0,
-      );
+      if (!checked) {
+        setSmartChainCorrectionEnabled(false);
+        setSmartCorrectionEditing(false);
+        setRpcKeyTest({ status: "idle" });
+        return;
+      }
+
+      setAlchemyApiKeyDraft(alchemyApiKey);
+      setRpcKeyTest({ status: "idle" });
+      setSmartCorrectionEditing(true);
     },
     [alchemyApiKey],
   );
+
+  const handleTestAlchemyApiKey = React.useCallback(async () => {
+    const candidate = alchemyApiKeyDraft.trim();
+    if (!candidate || !configApi?.testAlchemyApiKey) {
+      setRpcKeyTest({ status: "failed", reason: "missing_key" });
+      return;
+    }
+
+    setRpcKeyTest({ status: "testing" });
+    try {
+      const result = await configApi.testAlchemyApiKey(candidate);
+      setRpcKeyTest(
+        result.ok
+          ? { status: "success", latencyMs: result.latencyMs }
+          : { status: "failed", reason: result.reason },
+      );
+    } catch {
+      setRpcKeyTest({ status: "failed", reason: "unreachable" });
+    }
+  }, [alchemyApiKeyDraft, configApi]);
+
+  const handleConfirmSmartCorrection = React.useCallback(() => {
+    if (rpcKeyTest.status !== "success") {
+      return;
+    }
+    setAlchemyApiKey(alchemyApiKeyDraft.trim());
+    setSmartChainCorrectionEnabled(true);
+    setSmartCorrectionEditing(false);
+  }, [alchemyApiKeyDraft, rpcKeyTest.status]);
+
+  const handleCancelSmartCorrectionEdit = React.useCallback(() => {
+    setAlchemyApiKeyDraft(alchemyApiKey);
+    setRpcKeyTest({ status: "idle" });
+    setSmartCorrectionEditing(false);
+  }, [alchemyApiKey]);
+
+  const handleEditSmartCorrectionKey = React.useCallback(() => {
+    setAlchemyApiKeyDraft(alchemyApiKey);
+    setRpcKeyTest({ status: "idle" });
+    setSmartCorrectionEditing(true);
+  }, [alchemyApiKey]);
 
   const handleExcludeToggle = React.useCallback(
     (checked: boolean) => {
@@ -1960,10 +2031,6 @@ function HomePage() {
             <div className="flex items-center gap-2 self-end sm:self-auto">
               <LangToggle />
               <ToggleTheme />
-              <Button variant="default" className="gap-2" disabled>
-                <BadgeCheck className="size-4" />
-                <span>All features included</span>
-              </Button>
             </div>
           </header>
 
@@ -2007,53 +2074,15 @@ function HomePage() {
                 ) : (
                   platforms.map((platform) => {
                     const shortcuts = platform.shortcuts ?? [];
-                    const primaryTokenValue =
-                      shortcuts.length > 0
-                        ? (canonicalizeTokenType(shortcuts[0].tokenType) ??
-                          shortcuts[0].tokenType ??
-                          "Any")
-                        : (canonicalizeTokenType(platform.tokenType) ??
-                          platform.tokenType ??
-                          "Any");
-                    const activeTokenSet = new Set<string>();
-                    const registerTokens = (spec?: string) => {
-                      parseChainSpec(spec ?? "")
-                        .map((token) => normalizeChainTokenKey(token))
-                        .filter(Boolean)
-                        .forEach((token) => activeTokenSet.add(token));
-                    };
-                    shortcuts.forEach((shortcutEntry) =>
-                      registerTokens(shortcutEntry.tokenType),
-                    );
-                    registerTokens(primaryTokenValue);
-                    registerTokens(platform.tokenType);
-                    if (activeTokenSet.size === 0) {
-                      platform.urls.forEach((entry) =>
-                        registerTokens(entry.chain),
-                      );
-                    }
-                    const showAllUrls =
-                      activeTokenSet.size === 0 || activeTokenSet.has("any");
-                    const visibleUrls = platform.urls.filter((entry) => {
-                      const entryTokens = parseChainSpec(entry.chain);
-                      const entryKeys = entryTokens.map((token) =>
-                        normalizeChainTokenKey(token),
-                      );
-                      if (entryKeys.length === 0 || entryKeys.includes("any")) {
-                        return true;
-                      }
-                      if (showAllUrls) {
-                        return true;
-                      }
-                      return entryKeys.some((tokenKey) =>
-                        activeTokenSet.has(tokenKey),
-                      );
-                    });
 
                     return (
                       <div
                         key={platform.id}
-                        className="border-border/60 bg-muted/40 hover:bg-muted/60 flex flex-col gap-4 rounded-xl border p-4 transition"
+                        className={`border-border/60 flex flex-col gap-4 rounded-xl border p-4 transition-all ${
+                          platform.enabled
+                            ? "bg-muted/40 hover:bg-muted/60"
+                            : "bg-muted/20 opacity-60 grayscale-[0.15] hover:opacity-75"
+                        }`}
                       >
                         <div className="flex flex-row items-center justify-between gap-4">
                           <div className="space-y-1">
@@ -2175,23 +2204,6 @@ function HomePage() {
                             );
                           })}
                         </div>
-                        <div className="text-muted-foreground flex flex-col gap-1 text-xs">
-                          {visibleUrls.map((entry, entryIndex) => {
-                            const chainLabel = getChainDisplayLabel(
-                              entry.chain,
-                              primaryTokenValue,
-                            );
-                            return (
-                              <span
-                                key={`${platform.id}-${entryIndex}`}
-                                className="font-mono"
-                              >
-                                {chainLabel ? `[${chainLabel}] ` : ""}
-                                {entry.url}
-                              </span>
-                            );
-                          })}
-                        </div>
                       </div>
                     );
                   })
@@ -2266,28 +2278,6 @@ function HomePage() {
                       </p>
                     </div>
                     <div className="space-y-3 sm:w-1/2">
-                      <div className="border-border/60 bg-background/70 space-y-2 rounded-lg border p-3">
-                        <Label htmlFor="alchemy-api-key">
-                          {t("home.alchemyApiKeyLabel")}
-                        </Label>
-                        <Input
-                          id="alchemy-api-key"
-                          type="password"
-                          value={alchemyApiKey}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setAlchemyApiKey(value);
-                            if (!value.trim()) {
-                              setSmartChainCorrectionEnabled(false);
-                            }
-                          }}
-                          placeholder={t("home.alchemyApiKeyPlaceholder")}
-                          autoComplete="off"
-                        />
-                        <p className="text-muted-foreground text-xs">
-                          {t("home.alchemyApiKeyDescription")}
-                        </p>
-                      </div>
                       <div className="border-border/60 bg-background/70 flex items-center justify-between rounded-lg border p-3">
                         <p className="text-sm font-medium">
                           {t("home.smartChainCorrectionToggleLabel")}
@@ -2295,9 +2285,102 @@ function HomePage() {
                         <Switch
                           checked={smartChainCorrectionEnabled}
                           onCheckedChange={handleSmartChainCorrectionToggle}
-                          disabled={!alchemyApiKey.trim()}
                         />
                       </div>
+                      {smartCorrectionEditing ? (
+                        <div className="border-border/60 bg-background/70 space-y-3 rounded-lg border p-3">
+                          <div className="space-y-2">
+                            <Label htmlFor="alchemy-api-key">
+                              {t("home.alchemyApiKeyLabel")}
+                            </Label>
+                            <div className="flex gap-2">
+                              <Input
+                                id="alchemy-api-key"
+                                type="password"
+                                value={alchemyApiKeyDraft}
+                                onChange={(event) => {
+                                  setAlchemyApiKeyDraft(event.target.value);
+                                  setRpcKeyTest({ status: "idle" });
+                                }}
+                                placeholder={t("home.alchemyApiKeyPlaceholder")}
+                                autoComplete="off"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={handleTestAlchemyApiKey}
+                                disabled={
+                                  !alchemyApiKeyDraft.trim() ||
+                                  rpcKeyTest.status === "testing"
+                                }
+                              >
+                                {rpcKeyTest.status === "testing" ? (
+                                  <Loader2 className="size-4 animate-spin" />
+                                ) : null}
+                                {t("home.alchemyApiKeyTest")}
+                              </Button>
+                            </div>
+                          </div>
+                          {rpcKeyTest.status === "success" ? (
+                            <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
+                              <CheckCircle2 className="size-4" />
+                              <span>
+                                {t("home.alchemyApiKeyTestSuccess", {
+                                  latency: rpcKeyTest.latencyMs,
+                                })}
+                              </span>
+                            </div>
+                          ) : null}
+                          {rpcKeyTest.status === "failed" ? (
+                            <div className="text-destructive flex items-center gap-2 text-xs">
+                              <AlertCircle className="size-4" />
+                              <span>
+                                {t(
+                                  `home.alchemyApiKeyTestError.${rpcKeyTest.reason ?? "unreachable"}`,
+                                )}
+                              </span>
+                            </div>
+                          ) : null}
+                          <p className="text-muted-foreground text-xs">
+                            {t("home.alchemyApiKeyDescription")}
+                          </p>
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={handleCancelSmartCorrectionEdit}
+                            >
+                              {t("home.alchemyApiKeyCancel")}
+                            </Button>
+                            <Button
+                              type="button"
+                              onClick={handleConfirmSmartCorrection}
+                              disabled={rpcKeyTest.status !== "success"}
+                            >
+                              {t("home.alchemyApiKeyConfirm")}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : smartChainCorrectionEnabled && alchemyApiKey ? (
+                        <div className="border-border/60 bg-background/70 flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="text-muted-foreground text-xs">
+                              {t("home.alchemyApiKeyConfigured")}
+                            </p>
+                            <p className="truncate font-mono text-sm">
+                              {maskApiKey(alchemyApiKey)}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleEditSmartCorrectionKey}
+                          >
+                            {t("home.alchemyApiKeyModify")}
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 

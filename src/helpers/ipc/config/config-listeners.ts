@@ -5,12 +5,14 @@ import { promisify } from "node:util";
 import {
   CONFIG_GET_CHANNEL,
   CONFIG_SAVE_CHANNEL,
+  CONFIG_TEST_ALCHEMY_KEY_CHANNEL,
   PLATFORM_EXECUTE_CHANNEL,
   CONFIG_SHORTCUTS_DISABLE_CHANNEL,
   CONFIG_SHORTCUTS_ENABLE_CHANNEL,
 } from "./config-channels";
 import { getConfig, saveConfig } from "./config-store";
 import { executePlatforms } from "./platform-executor";
+import { testAlchemyApiKey } from "./rpc-chain-detector";
 import type {
   AppConfig,
   AppConfigSavePayload,
@@ -753,6 +755,10 @@ export function addConfigEventListeners(
       options?.onConfigUpdated?.(saved);
       return;
     },
+  );
+
+  ipcMain.handle(CONFIG_TEST_ALCHEMY_KEY_CHANNEL, (_event, apiKey: unknown) =>
+    testAlchemyApiKey({ apiKey: typeof apiKey === "string" ? apiKey : "" }),
   );
 
   ipcMain.handle(

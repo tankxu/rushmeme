@@ -3,6 +3,7 @@
 // whether you're running in development or production).
 import type {
   AppConfigSavePayload,
+  AlchemyApiKeyTestResult,
   ExecutePlatformsRequest,
   ExecutePlatformsResponse,
   RuntimeConfig,
@@ -41,6 +42,7 @@ declare global {
   interface RushConfigContext {
     getConfig: () => Promise<RuntimeConfig>;
     saveConfig: (config: AppConfigSavePayload) => Promise<void>;
+    testAlchemyApiKey: (apiKey: string) => Promise<AlchemyApiKeyTestResult>;
     executePlatforms: (
       payload?: ExecutePlatformsRequest,
     ) => Promise<ExecutePlatformsResponse>;

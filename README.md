@@ -4,6 +4,8 @@ RushMeme is a free and open-source desktop tool for crypto research and trading 
 
 All features are included for everyone: no account, payment, license key, or feature tier is required.
 
+Current version: **v0.2.0**
+
 ![RushMeme Demo](images/demo.gif)
 
 ## Features
@@ -11,9 +13,20 @@ All features are included for everyone: no account, payment, license key, or fea
 - Open a selected contract address in multiple configured platforms with one shortcut.
 - Run from the system tray or menu bar with per-platform actions.
 - Persist platform settings and language preferences locally.
-- Create custom platforms, URL templates, chains, and shortcuts.
-- Correct EVM chains locally with your own Alchemy API key.
+- Create custom platforms, URL templates, chain mappings, and shortcuts.
+- Correct EVM chains on-device with your own Alchemy API key.
+- Test an RPC key before enabling smart correction, then keep it hidden behind a masked summary.
+- Filter executions by the active application and configure an optional browser launch delay.
 - Support macOS and Windows.
+
+## What's new in v0.2.0
+
+- Retired the RushMeme licensing and token-detection backend.
+- Made every previously paid feature available to everyone.
+- Moved smart EVM chain correction into the desktop app using direct Alchemy RPC calls.
+- Added RPC key testing and an explicit confirmation step before smart correction is enabled.
+- Simplified platform cards, renamed the visible `Token type` field to `Chain`, and visually muted disabled platforms.
+- Switched update checks to public GitHub Releases.
 
 ## Network and privacy
 
@@ -21,7 +34,8 @@ RushMeme has no account, licensing, payment, telemetry, or application backend.
 Normal shortcut execution opens only the platform URLs you configure. Smart chain
 correction is optional: when enabled, the desktop app sends the selected contract
 address directly to supported Alchemy RPC endpoints using the API key you provide.
-The key is stored in the app's local settings and is never sent to RushMeme.
+The key is stored in the Electron app's local configuration, masked in the interface,
+and never sent to RushMeme. Use a dedicated RPC key and never commit it to source control.
 
 The update checker reads the latest public release from GitHub Releases. Disabling
 smart chain correction leaves platform navigation and update checks as the only

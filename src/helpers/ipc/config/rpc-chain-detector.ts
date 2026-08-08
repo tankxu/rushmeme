@@ -1,4 +1,5 @@
 import { normalizeChainTokenKey } from "@/utils/chain";
+import type { AlchemyApiKeyTestResult } from "@/types/config";
 
 type RpcNetwork = {
   canonicalToken: string;
@@ -61,6 +62,69 @@ type RpcPayload = {
   result?: unknown;
   error?: unknown;
 };
+
+type TestAlchemyApiKeyOptions = {
+  apiKey: string;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+};
+
+export async function testAlchemyApiKey({
+  apiKey,
+  fetchImpl = fetch,
+  timeoutMs = 8_000,
+}: TestAlchemyApiKeyOptions): Promise<AlchemyApiKeyTestResult> {
+  const trimmedKey = apiKey.trim();
+  if (!trimmedKey) {
+    return { ok: false, reason: "missing_key" };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const startedAt = Date.now();
+
+  try {
+    const response = await fetchImpl(
+      `https://eth-mainnet.g.alchemy.com/v2/${encodeURIComponent(trimmedKey)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "eth_blockNumber",
+          params: [],
+        }),
+        signal: controller.signal,
+      },
+    );
+
+    if (response.status === 401 || response.status === 403) {
+      return { ok: false, status: response.status, reason: "unauthorized" };
+    }
+    if (response.status === 429) {
+      return { ok: false, status: response.status, reason: "rate_limited" };
+    }
+    if (!response.ok) {
+      return { ok: false, status: response.status, reason: "unreachable" };
+    }
+
+    const payload = (await response.json()) as RpcPayload;
+    if (
+      payload.error ||
+      typeof payload.result !== "string" ||
+      !/^0x[0-9a-f]+$/i.test(payload.result)
+    ) {
+      return { ok: false, reason: "unauthorized" };
+    }
+
+    return { ok: true, latencyMs: Date.now() - startedAt };
+  } catch {
+    return { ok: false, reason: "unreachable" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function hasContractCode(value: unknown): boolean {
   if (typeof value !== "string") {
