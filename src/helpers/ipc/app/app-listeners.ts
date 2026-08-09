@@ -45,6 +45,17 @@ function getDownloadKey(assetName: string): string {
   return arch && platform !== assetName ? `${platform}-${arch}` : platform;
 }
 
+function getAssetPriority(assetName: string): number {
+  const name = assetName.toLowerCase();
+  if (/\.dmg$|\.msi$|\.exe$|\.deb$|\.rpm$|\.appimage$/.test(name)) {
+    return 2;
+  }
+  if (/\.zip$|\.tar(?:\.gz|\.xz)?$/.test(name)) {
+    return 1;
+  }
+  return 0;
+}
+
 function normalizeGitHubRelease(
   release: GitHubRelease,
 ): AppLatestRelease | null {
@@ -53,12 +64,21 @@ function normalizeGitHubRelease(
     return null;
   }
 
+  const downloads = new Map<string, { url: string; priority: number }>();
+  for (const asset of release.assets ?? []) {
+    const name = asset.name?.trim();
+    const url = asset.browser_download_url?.trim();
+    if (!name || !url) continue;
+
+    const key = getDownloadKey(name);
+    const priority = getAssetPriority(name);
+    const existing = downloads.get(key);
+    if (!existing || priority > existing.priority) {
+      downloads.set(key, { url, priority });
+    }
+  }
   const downloadUrls = Object.fromEntries(
-    (release.assets ?? []).flatMap((asset) => {
-      const name = asset.name?.trim();
-      const url = asset.browser_download_url?.trim();
-      return name && url ? [[getDownloadKey(name), url] as const] : [];
-    }),
+    Array.from(downloads, ([key, value]) => [key, value.url]),
   );
   const publishedAt = release.published_at ?? release.created_at ?? null;
   const timestamp = publishedAt ? Date.parse(publishedAt) : Number.NaN;

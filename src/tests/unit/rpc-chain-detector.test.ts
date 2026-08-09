@@ -3,10 +3,15 @@ import {
   detectEvmContractChains,
   testAlchemyApiKey,
 } from "@/helpers/ipc/config/rpc-chain-detector";
+import { chainSupportsAddressType } from "@/utils/chain";
 
 const ADDRESS = "0xa50a51c09a5c451c52bb714527e1974b686d8e77";
 
 describe("detectEvmContractChains", () => {
+  test("treats Mantle as an EVM chain", () => {
+    expect(chainSupportsAddressType("[mantle]", "evm")).toBe(true);
+  });
+
   test("returns only candidate chains that contain contract code", async () => {
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);

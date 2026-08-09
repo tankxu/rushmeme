@@ -288,8 +288,7 @@ function resolveDownloadUrl(
     }
   }
 
-  const fallback = entries[0];
-  return { key: fallback[0], url: fallback[1].trim() };
+  return null;
 }
 
 export default function Footer() {

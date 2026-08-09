@@ -1,4 +1,11 @@
+import { isSafeExternalUrl } from "@/utils/external-url";
+
 export async function openExternalLink(url: string) {
+  if (!isSafeExternalUrl(url)) {
+    console.warn("[rushmeme] Refused to open an unsafe external URL");
+    return;
+  }
+
   const shellBridge = window?.electronShell;
 
   if (shellBridge?.openExternal) {

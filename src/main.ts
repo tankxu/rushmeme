@@ -24,12 +24,6 @@ import { convertDisplayShortcutToAccelerator } from "@/utils/shortcut";
 
 const inDevelopment = process.env.NODE_ENV === "development";
 
-if (process.platform === "darwin") {
-  // Fall back to plaintext cookie storage and bypass Keychain access.
-  app.commandLine.appendSwitch("password-store", "basic");
-  app.commandLine.appendSwitch("use-mock-keychain");
-}
-
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
@@ -530,7 +524,9 @@ app.whenReady().then(async () => {
   configureApplicationMenu();
   createWindow();
   createTray();
-  await installExtensions();
+  if (!app.isPackaged) {
+    await installExtensions();
+  }
 });
 
 //osX only
@@ -543,6 +539,8 @@ app.on("window-all-closed", () => {
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
+  } else {
+    showMainWindow();
   }
 });
 //osX only ends

@@ -1504,7 +1504,10 @@ function HomePage() {
           name: uniqueName,
         };
         const normalized = normalizePlatformForState(platformWithUniqueName);
-        draft = adjustPlatformForTokenType(normalized, normalized.tokenType);
+        draft = adjustPlatformForTokenType(
+          normalized,
+          normalized.tokenType ?? "Any",
+        );
       } else {
         const template = PLATFORM_TEMPLATES.find(
           (item) => item.key === templateKey,
@@ -1529,7 +1532,10 @@ function HomePage() {
           name: uniqueName,
         };
         const normalized = normalizePlatformForState(platformWithUniqueName);
-        draft = adjustPlatformForTokenType(normalized, normalized.tokenType);
+        draft = adjustPlatformForTokenType(
+          normalized,
+          normalized.tokenType ?? "Any",
+        );
       }
 
       if (!draft) {
@@ -1548,7 +1554,7 @@ function HomePage() {
     setEditingPlatformId(platform.id);
     const cloned = clonePlatformConfig(platform);
     setEditingPlatformDraft(
-      adjustPlatformForTokenType(cloned, cloned.tokenType),
+      adjustPlatformForTokenType(cloned, cloned.tokenType ?? "Any"),
     );
   }, []);
 
@@ -1918,7 +1924,7 @@ function HomePage() {
                   {dialogPlatform.urls.map((entry, entryIndex) => {
                     const chainLabel = getChainDisplayLabel(
                       entry.chain,
-                      dialogPlatform.tokenType,
+                      dialogPlatform.tokenType ?? "Any",
                     );
                     return (
                       <InputGroup key={`${dialogPlatformId}-${entryIndex}`}>

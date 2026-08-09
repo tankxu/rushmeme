@@ -128,6 +128,7 @@ const EVM_CHAIN_ALIASES = new Set(
     "xlayer",
     "zk",
     "blast",
+    "mantle",
   ].map(normalizeChainTokenKey),
 );
 

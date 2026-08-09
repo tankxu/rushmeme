@@ -17,6 +17,7 @@ import {
   detectAddressType,
   type AddressType,
 } from "@/utils/chain";
+import { isSafeExternalUrl } from "@/utils/external-url";
 import { detectEvmContractChains } from "./rpc-chain-detector";
 import {
   getActiveApplication,
@@ -355,7 +356,7 @@ type ResolvedPlatformUrl = {
   tokens: string[];
 };
 
-type PendingPlatformUrl = {
+export type PendingPlatformUrl = {
   url: string;
   platform: PlatformConfig;
   address: string;
@@ -410,7 +411,10 @@ function buildPlatformUrls(
       const normalizedTokens = rawTokens
         .map((token) => normalizeChainTokenKey(token))
         .filter(Boolean);
-      if (!formattedUrl) {
+      if (!formattedUrl || !isSafeExternalUrl(formattedUrl)) {
+        console.warn("[rushmeme] ignored unsafe platform URL", {
+          platform: platform.name,
+        });
         return [];
       }
       return [
@@ -424,7 +428,7 @@ function buildPlatformUrls(
     .filter((entry) => typeof entry.url === "string" && entry.url.length > 0);
 }
 
-async function maybeRunSmartChainCorrection(
+export async function maybeRunSmartChainCorrection(
   config: AppConfig,
   context: {
     address: string;
@@ -543,7 +547,7 @@ async function maybeRunSmartChainCorrection(
             ? resolvedUrl.replace("{ANY}", encodeURIComponent(context.address))
             : resolvedUrl.replace("{CA}", encodeURIComponent(context.address));
 
-        if (!finalUrl) {
+        if (!finalUrl || !isSafeExternalUrl(finalUrl)) {
           continue;
         }
 
@@ -579,7 +583,7 @@ async function maybeRunSmartChainCorrection(
 
     if (!targetToken) {
       if (config.notifications.enabled) {
-        const fallbackChain = chains[0] ?? "unknown";
+        const fallbackChain = normalizedChains[0] ?? "unknown";
         showNotification({
           title: "Smart chain correction",
           body: `Detected ${fallbackChain.toUpperCase()} but no matching destination is configured.`,
@@ -589,7 +593,7 @@ async function maybeRunSmartChainCorrection(
       console.info(
         "[rushmeme] smart chain correction: no configured destination for detected chains",
         {
-          chains,
+          chains: normalizedChains,
           openedTokens: Array.from(openedTokens),
         },
       );
@@ -597,8 +601,9 @@ async function maybeRunSmartChainCorrection(
     }
 
     const displayChain =
-      chains.find((chain) => normalizeChainTokenKey(chain) === targetToken) ??
-      targetToken;
+      normalizedChains.find(
+        (chain) => normalizeChainTokenKey(chain) === targetToken,
+      ) ?? targetToken;
 
     const alreadyOpened = new Set(context.openedUrls);
     const candidates = candidatesByToken.get(targetToken) ?? [];
@@ -667,10 +672,23 @@ export async function executePlatforms(
     : [];
   const includeActiveAppOnly = config.includeActiveAppOnly === true;
 
-  const shouldCheckInclude =
+  if (
     !bypassApplicationFilters &&
     includeActiveAppOnly &&
-    includedApps.length > 0;
+    includedApps.length === 0
+  ) {
+    console.log("[rushmeme] execution skipped: allowlist is enabled but empty");
+    return {
+      success: false,
+      opened,
+      error:
+        "Execution skipped because the application allowlist has no entries.",
+      selectionCaptured: false,
+      skippedBecauseExcluded: true,
+    };
+  }
+
+  const shouldCheckInclude = !bypassApplicationFilters && includeActiveAppOnly;
   const shouldCheckExclude =
     !bypassApplicationFilters && excludeActiveApp && excludedApps.length > 0;
 
@@ -741,10 +759,6 @@ export async function executePlatforms(
         };
       }
     }
-  } else if (!bypassApplicationFilters && includeActiveAppOnly) {
-    console.log(
-      "[rushmeme] allowlist enabled but no applications configured; check skipped",
-    );
   }
 
   if (shouldCheckExclude) {
@@ -815,7 +829,11 @@ export async function executePlatforms(
   let originalClipboardValue: string | null = null;
   const restoreClipboardIfNeeded = () => {
     if (selectionCaptured && typeof originalClipboardValue === "string") {
-      clipboard.writeText(originalClipboardValue);
+      try {
+        clipboard.writeText(originalClipboardValue);
+      } catch (error) {
+        console.warn("[rushmeme] failed to restore clipboard:", error);
+      }
     }
   };
 
@@ -981,14 +999,49 @@ export async function executePlatforms(
     await delay(config.browserDelayMs);
   }
 
-  await Promise.all(
-    urlsToOpen.map(async ({ url }) => {
-      await shell.openExternal(url);
-      opened.push(url);
-    }),
-  );
+  let openResults: PromiseSettledResult<void>[];
+  try {
+    openResults = await Promise.allSettled(
+      urlsToOpen.map(async ({ url }) => {
+        await shell.openExternal(url);
+        opened.push(url);
+      }),
+    );
+  } finally {
+    restoreClipboardIfNeeded();
+  }
 
-  restoreClipboardIfNeeded();
+  const failedOpenCount = openResults.filter(
+    (result) => result.status === "rejected",
+  ).length;
+  if (failedOpenCount > 0) {
+    console.error("[rushmeme] failed to open external destinations", {
+      failed: failedOpenCount,
+      total: urlsToOpen.length,
+    });
+    if (config.notifications.enabled) {
+      showNotification({
+        title: "RushMeme",
+        body:
+          opened.length > 0
+            ? `${failedOpenCount} destination(s) could not be opened.`
+            : "The configured destinations could not be opened.",
+        variant: "warning",
+      });
+    }
+  }
+
+  if (opened.length === 0) {
+    return {
+      success: false,
+      opened,
+      address:
+        detectedAddresses[0]?.address ??
+        (anyPlatforms.length > 0 ? rawInput : undefined),
+      error: "Failed to open the configured destinations.",
+      selectionCaptured,
+    };
+  }
 
   const correctionCandidate =
     detectedAddresses[0] ??
@@ -1012,5 +1065,9 @@ export async function executePlatforms(
       detectedAddresses[0]?.address ??
       (anyPlatforms.length > 0 ? rawInput : undefined),
     selectionCaptured,
+    error:
+      failedOpenCount > 0
+        ? `${failedOpenCount} destination(s) could not be opened.`
+        : undefined,
   };
 }
