@@ -4,7 +4,9 @@ RushMeme is a free and open-source desktop tool for crypto research and trading 
 
 All features are included for everyone: no account, payment, license key, or feature tier is required.
 
-Current version: **v0.2.0**
+Current version: **v0.2.1**
+
+![RushMeme v0.2.1](docs/images/rushmeme-v0.2.1.jpg)
 
 ![RushMeme Demo](images/demo.gif)
 
@@ -19,7 +21,11 @@ Current version: **v0.2.0**
 - Filter executions by the active application and configure an optional browser launch delay.
 - Support macOS and Windows.
 
-## What's new in v0.2.0
+## What's new in v0.2.1
+
+- Restored the standard macOS inset for the native traffic-light window controls.
+
+### v0.2.0
 
 - Retired the RushMeme licensing and token-detection backend.
 - Made every previously paid feature available to everyone.
