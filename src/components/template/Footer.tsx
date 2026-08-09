@@ -16,7 +16,6 @@ import type { AppLatestRelease, AppRuntimeInfo } from "@/types/app";
 
 const VERSION_CHECK_DELAY_MS = 5_000;
 const VERSION_CHECK_COOLDOWN_MS = 60_000;
-const VERSION_CHECK_AFTER_REPORT_MS = 3_000;
 const SKIP_VERSION_PREFIX = "rushmeme:skip-version:";
 
 function readSkipPreference(version: string | null): boolean {
@@ -289,8 +288,7 @@ function resolveDownloadUrl(
     }
   }
 
-  const fallback = entries[0];
-  return { key: fallback[0], url: fallback[1].trim() };
+  return null;
 }
 
 export default function Footer() {
@@ -307,7 +305,6 @@ export default function Footer() {
   const [skipForcedUpdate, setSkipForcedUpdate] = React.useState(false);
   const lastCheckRef = React.useRef<number>(0);
   const scheduledCheckRef = React.useRef<number | null>(null);
-  const lastValidationRef = React.useRef<string | null>(null);
 
   const handleOpenLink = React.useCallback(
     (event: React.MouseEvent<HTMLAnchorElement>, url: string) => {
@@ -446,46 +443,6 @@ export default function Footer() {
     };
   }, [clearScheduledCheck, currentVersion, scheduleVersionCheck]);
 
-  React.useEffect(() => {
-    if (!window.rushLicense?.watch) {
-      return undefined;
-    }
-
-    let disposed = false;
-    let unsubscribe: (() => void) | undefined;
-
-    window.rushLicense
-      .watch((snapshot) => {
-        if (disposed) {
-          return;
-        }
-        const nextValidatedAt = snapshot?.lastValidatedAt ?? null;
-        if (nextValidatedAt && nextValidatedAt !== lastValidationRef.current) {
-          lastValidationRef.current = nextValidatedAt;
-          scheduleVersionCheck(VERSION_CHECK_AFTER_REPORT_MS);
-        }
-      })
-      .then((stop) => {
-        if (disposed) {
-          stop();
-          return;
-        }
-        unsubscribe = stop;
-      })
-      .catch((error) => {
-        console.warn(
-          "[rushmeme] failed to subscribe to license updates",
-          error,
-        );
-      });
-
-    return () => {
-      disposed = true;
-      clearScheduledCheck();
-      unsubscribe?.();
-    };
-  }, [clearScheduledCheck, scheduleVersionCheck]);
-
   const isUpdateAvailable = React.useMemo(() => {
     if (!currentVersion || !latestRelease?.version) {
       return false;
@@ -568,7 +525,7 @@ export default function Footer() {
           </div>
           <DialogFooter className="sm:flex-row sm:justify-between sm:gap-2">
             {showSkipOption ? (
-              <label className="select-none text-muted-foreground flex cursor-pointer items-center gap-2 text-xs tracking-wide">
+              <label className="text-muted-foreground flex cursor-pointer items-center gap-2 text-xs tracking-wide select-none">
                 <Checkbox
                   checked={skipForcedUpdate}
                   onCheckedChange={(checked) => {
@@ -603,12 +560,14 @@ export default function Footer() {
         <p>
           <span>
             <a
-              href="https://rushmeme.vip"
-              onClick={(event) => handleOpenLink(event, "https://rushmeme.vip")}
+              href="https://github.com/tankxu/rushmeme"
+              onClick={(event) =>
+                handleOpenLink(event, "https://github.com/tankxu/rushmeme")
+              }
               rel="noreferrer"
               className="underline-offset-2 hover:underline"
             >
-              RUSHMEME.VIP
+              OPEN SOURCE
             </a>
           </span>
           <span className="mx-2">|</span>

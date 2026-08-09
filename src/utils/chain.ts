@@ -128,6 +128,7 @@ const EVM_CHAIN_ALIASES = new Set(
     "xlayer",
     "zk",
     "blast",
+    "mantle",
   ].map(normalizeChainTokenKey),
 );
 
@@ -292,7 +293,11 @@ export function extractAddressesFromText(text: string): DetectedAddress[] {
   const candidates: Candidate[] = [];
   const seen = new Set<string>();
 
-  const registerCandidate = (address: string, type: AddressType, index: number) => {
+  const registerCandidate = (
+    address: string,
+    type: AddressType,
+    index: number,
+  ) => {
     const key = type === "solana" ? address : address.toLowerCase();
     if (!seen.has(key)) {
       seen.add(key);

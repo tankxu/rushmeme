@@ -1,5 +1,5 @@
 import React from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import ToggleTheme from "@/components/ToggleTheme";
 import LangToggle from "@/components/LangToggle";
@@ -41,7 +41,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   AlertCircle,
-  BadgeCheck,
   CheckCircle2,
   Loader2,
   Plus,
@@ -55,7 +54,6 @@ import type {
   PlatformConfig,
   PlatformShortcutConfig,
   PlatformTemplate,
-  LicenseSnapshot,
 } from "@/types/config";
 import {
   PLATFORM_TEMPLATES,
@@ -71,6 +69,12 @@ import {
 
 type SaveStatus = "saved" | "saving" | "failed";
 
+type RpcKeyTestState = {
+  status: "idle" | "testing" | "success" | "failed";
+  latencyMs?: number;
+  reason?: "missing_key" | "unauthorized" | "rate_limited" | "unreachable";
+};
+
 type ShortcutLabels = {
   meta: string;
   ctrl: string;
@@ -81,6 +85,14 @@ type ShortcutLabels = {
 type ShortcutConflictMap = Map<string, Map<number, string[]>>;
 
 const MODIFIER_KEYS = new Set(["Meta", "Control", "Shift", "Alt"]);
+
+function maskApiKey(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= 8) {
+    return `${trimmed.slice(0, 2)}••••${trimmed.slice(-2)}`;
+  }
+  return `${trimmed.slice(0, 4)}••••••••${trimmed.slice(-4)}`;
+}
 
 const SHIFTED_DIGIT_MAP: Record<string, string> = {
   "!": "1",
@@ -94,8 +106,6 @@ const SHIFTED_DIGIT_MAP: Record<string, string> = {
   "(": "9",
   ")": "0",
 };
-
-const ONE_DAY_MS = 86_400_000;
 
 function formatShortcutFromEvent(
   event: React.KeyboardEvent<HTMLInputElement>,
@@ -377,7 +387,6 @@ function instantiatePlatformInstance(
     tokenType: primary.tokenType,
     shortcut: primary.shortcut,
     enabled: template.enabled,
-    requiresPro: template.requiresPro,
     shortcuts,
     urls: normalizedUrls.map((entry) => ({
       ...entry,
@@ -820,31 +829,8 @@ function removePlatformShortcutEntry(
 
 function HomePage() {
   const { t } = useTranslation();
-  const initialLicenseSnapshot =
-    typeof window !== "undefined"
-      ? (window.rushLicenseInitialState?.getSnapshot() ?? null)
-      : null;
   const initialDefaults = React.useMemo(() => createDefaultAppConfig(), []);
   const defaultsRef = React.useRef(initialDefaults);
-  const licenseRef = React.useRef(
-    initialLicenseSnapshot ?? defaultsRef.current.license,
-  );
-  const [licenseSnapshotState, setLicenseSnapshotState] = React.useState<
-    LicenseSnapshot
-  >(licenseRef.current);
-  const initialIsPro = (() => {
-    if (typeof window === "undefined") {
-      return false;
-    }
-    const runtimeFlag = window.rushProRuntime?.getFlag?.();
-    if (runtimeFlag !== undefined) {
-      return Boolean(runtimeFlag);
-    }
-    if (initialLicenseSnapshot) {
-      return initialLicenseSnapshot.status === "active";
-    }
-    return window.rushLicenseInitialState?.isPro() ?? false;
-  })();
   const [platforms, setPlatforms] = React.useState<PlatformConfig[]>(
     defaultsRef.current.platforms.map(normalizePlatformForState),
   );
@@ -856,6 +842,15 @@ function HomePage() {
   );
   const [smartChainCorrectionEnabled, setSmartChainCorrectionEnabled] =
     React.useState(defaultsRef.current.smartChainCorrectionEnabled);
+  const [alchemyApiKey, setAlchemyApiKey] = React.useState(
+    defaultsRef.current.alchemyApiKey,
+  );
+  const [alchemyApiKeyDraft, setAlchemyApiKeyDraft] = React.useState("");
+  const [smartCorrectionEditing, setSmartCorrectionEditing] =
+    React.useState(false);
+  const [rpcKeyTest, setRpcKeyTest] = React.useState<RpcKeyTestState>({
+    status: "idle",
+  });
   const [excludeActiveApp, setExcludeActiveApp] = React.useState(
     defaultsRef.current.excludeActiveApp,
   );
@@ -870,17 +865,12 @@ function HomePage() {
   );
   const [excludedAppDraft, setExcludedAppDraft] = React.useState("");
   const [includedAppDraft, setIncludedAppDraft] = React.useState("");
-  const [isPro, setIsPro] = React.useState(initialIsPro);
   const [loading, setLoading] = React.useState(true);
   const [status, setStatus] = React.useState<SaveStatus>("saved");
   const [statusVisible, setStatusVisible] = React.useState(false);
   const hydrationRef = React.useRef(true);
   const hasStatusMounted = React.useRef(false);
   const hideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [upgradeDialogOpen, setUpgradeDialogOpen] = React.useState(false);
-  const [upgradeDialogVariant, setUpgradeDialogVariant] = React.useState<
-    "multiPlatform" | "advancedConfig"
-  >("multiPlatform");
   const [editingPlatformId, setEditingPlatformId] = React.useState<
     string | null
   >(null);
@@ -893,10 +883,6 @@ function HomePage() {
   const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(
     null,
   );
-  const [licenseHeartbeatError, setLicenseHeartbeatError] = React.useState<{
-    code: string;
-    message: string;
-  } | null>(null);
   const isMac = React.useMemo(() => isMacOS(), []);
   const excludedAppsToggleDescription = t("home.excludedAppsToggleDescription");
   const showExcludedAppsToggleDescription =
@@ -932,101 +918,14 @@ function HomePage() {
     return computeShortcutConflicts([...others, editingPlatformDraft]);
   }, [editingPlatformDraft, platforms]);
 
-  const expiresAtValue = licenseSnapshotState.expiresAt;
-  let proExpiryNotice: string | null = null;
-  if (
-    isPro &&
-    typeof expiresAtValue === "string" &&
-    expiresAtValue.trim().length > 0
-  ) {
-    const expiryMs = Date.parse(expiresAtValue);
-    if (Number.isFinite(expiryMs)) {
-      const now = Date.now();
-      const diff = expiryMs - now;
-      if (diff > 0 && diff <= ONE_DAY_MS) {
-        proExpiryNotice = t("home.proExpiresTomorrow");
-      }
-    }
-  }
-  const proButtonLabel = proExpiryNotice ? `Pro · ${proExpiryNotice}` : "Pro";
-
-  const previousIsProRef = React.useRef(isPro);
-
-  React.useEffect(() => {
-    const previous = previousIsProRef.current;
-    if (!previous && isPro) {
-      setBrowserDelay(0);
-    }
-    previousIsProRef.current = isPro;
-  }, [isPro]);
-
   const configApi =
     typeof window !== "undefined" ? window.rushConfig : undefined;
-  const licenseApi =
-    typeof window !== "undefined" ? window.rushLicense : undefined;
 
   React.useEffect(() => {
     return () => {
       configApi?.resumeShortcuts?.();
     };
   }, [configApi]);
-
-  React.useEffect(() => {
-    if (isPro) {
-      setUpgradeDialogOpen(false);
-    }
-  }, [isPro]);
-
-  React.useEffect(() => {
-    if (!licenseApi?.watch) {
-      return;
-    }
-
-    let disposed = false;
-    let stop: (() => void) | undefined;
-
-    licenseApi
-      .watch((snapshot) => {
-        licenseRef.current = snapshot;
-        setLicenseSnapshotState(snapshot);
-        const nextIsPro = snapshot.status === "active";
-        setIsPro(nextIsPro);
-        if (snapshot.status === "active") {
-          setLicenseHeartbeatError(null);
-        }
-      })
-      .then((unsubscribe) => {
-        if (disposed) {
-          unsubscribe();
-          return;
-        }
-        stop = unsubscribe;
-      })
-      .catch((error) => {
-        console.error("Failed to subscribe to license updates", error);
-      });
-
-    return () => {
-      disposed = true;
-      if (stop) {
-        stop();
-      }
-    };
-  }, [licenseApi]);
-
-  React.useEffect(() => {
-    if (!licenseApi?.onHeartbeatError) {
-      return;
-    }
-
-    const unsubscribe = licenseApi.onHeartbeatError((details) => {
-      setLicenseHeartbeatError(details);
-    });
-
-    return () => {
-      unsubscribe?.();
-    };
-  }, [licenseApi]);
 
   React.useEffect(() => {
     if (editingMode !== "edit" || !editingPlatformId) {
@@ -1061,14 +960,8 @@ function HomePage() {
           return;
         }
         hydrationRef.current = true;
-        if (config.isPro) {
-          setIsPro(true);
-        }
         setPlatforms(config.platforms.map(normalizePlatformForState));
         setBrowserDelay(config.browserDelayMs ?? DEFAULT_BROWSER_DELAY);
-        // preserve license for saving
-        licenseRef.current = config.license;
-        setLicenseSnapshotState(config.license);
         setNotificationsEnabled(
           Boolean(
             config.notifications?.enabled ??
@@ -1077,8 +970,15 @@ function HomePage() {
         );
         setSmartChainCorrectionEnabled(
           typeof config.smartChainCorrectionEnabled === "boolean"
-            ? config.smartChainCorrectionEnabled
+            ? config.smartChainCorrectionEnabled &&
+                Boolean(config.alchemyApiKey?.trim())
             : defaultsRef.current.smartChainCorrectionEnabled,
+        );
+        setAlchemyApiKey(
+          typeof config.alchemyApiKey === "string" ? config.alchemyApiKey : "",
+        );
+        setAlchemyApiKeyDraft(
+          typeof config.alchemyApiKey === "string" ? config.alchemyApiKey : "",
         );
         setExcludeActiveApp(
           typeof config.excludeActiveApp === "boolean"
@@ -1133,6 +1033,7 @@ function HomePage() {
       },
       browserDelayMs: browserDelay,
       smartChainCorrectionEnabled,
+      alchemyApiKey,
       excludeActiveApp,
       includeActiveAppOnly,
       excludedApps,
@@ -1158,6 +1059,7 @@ function HomePage() {
     };
   }, [
     browserDelay,
+    alchemyApiKey,
     configApi,
     excludeActiveApp,
     excludedApps,
@@ -1221,12 +1123,6 @@ function HomePage() {
       return;
     }
 
-    if (!isPro) {
-      setUpgradeDialogVariant("advancedConfig");
-      setUpgradeDialogOpen(true);
-      return;
-    }
-
     setExcludedApps((previous) => {
       const exists = previous.some(
         (entry) =>
@@ -1240,7 +1136,7 @@ function HomePage() {
       return [...previous, candidate];
     });
     setExcludedAppDraft("");
-  }, [excludedAppDraft, isPro, setUpgradeDialogOpen, setUpgradeDialogVariant]);
+  }, [excludedAppDraft]);
 
   const handleRemoveExcludedApp = React.useCallback((value: string) => {
     setExcludedApps((previous) =>
@@ -1271,12 +1167,6 @@ function HomePage() {
       return;
     }
 
-    if (!isPro) {
-      setUpgradeDialogVariant("advancedConfig");
-      setUpgradeDialogOpen(true);
-      return;
-    }
-
     setIncludedApps((previous) => {
       const exists = previous.some(
         (entry) =>
@@ -1290,7 +1180,7 @@ function HomePage() {
       return [...previous, candidate];
     });
     setIncludedAppDraft("");
-  }, [includedAppDraft, isPro, setUpgradeDialogOpen, setUpgradeDialogVariant]);
+  }, [includedAppDraft]);
 
   const handleRemoveIncludedApp = React.useCallback((value: string) => {
     setIncludedApps((previous) =>
@@ -1332,51 +1222,81 @@ function HomePage() {
 
   const handleSmartChainCorrectionToggle = React.useCallback(
     (checked: boolean) => {
-      if (!isPro) {
-        setUpgradeDialogVariant("advancedConfig");
-        setUpgradeDialogOpen(true);
+      if (!checked) {
+        setSmartChainCorrectionEnabled(false);
+        setSmartCorrectionEditing(false);
+        setRpcKeyTest({ status: "idle" });
         return;
       }
-      setSmartChainCorrectionEnabled(checked);
+
+      setAlchemyApiKeyDraft(alchemyApiKey);
+      setRpcKeyTest({ status: "idle" });
+      setSmartCorrectionEditing(true);
     },
-    [isPro, setUpgradeDialogOpen, setUpgradeDialogVariant],
+    [alchemyApiKey],
   );
+
+  const handleTestAlchemyApiKey = React.useCallback(async () => {
+    const candidate = alchemyApiKeyDraft.trim();
+    if (!candidate || !configApi?.testAlchemyApiKey) {
+      setRpcKeyTest({ status: "failed", reason: "missing_key" });
+      return;
+    }
+
+    setRpcKeyTest({ status: "testing" });
+    try {
+      const result = await configApi.testAlchemyApiKey(candidate);
+      setRpcKeyTest(
+        result.ok
+          ? { status: "success", latencyMs: result.latencyMs }
+          : { status: "failed", reason: result.reason },
+      );
+    } catch {
+      setRpcKeyTest({ status: "failed", reason: "unreachable" });
+    }
+  }, [alchemyApiKeyDraft, configApi]);
+
+  const handleConfirmSmartCorrection = React.useCallback(() => {
+    if (rpcKeyTest.status !== "success") {
+      return;
+    }
+    setAlchemyApiKey(alchemyApiKeyDraft.trim());
+    setSmartChainCorrectionEnabled(true);
+    setSmartCorrectionEditing(false);
+  }, [alchemyApiKeyDraft, rpcKeyTest.status]);
+
+  const handleCancelSmartCorrectionEdit = React.useCallback(() => {
+    setAlchemyApiKeyDraft(alchemyApiKey);
+    setRpcKeyTest({ status: "idle" });
+    setSmartCorrectionEditing(false);
+  }, [alchemyApiKey]);
+
+  const handleEditSmartCorrectionKey = React.useCallback(() => {
+    setAlchemyApiKeyDraft(alchemyApiKey);
+    setRpcKeyTest({ status: "idle" });
+    setSmartCorrectionEditing(true);
+  }, [alchemyApiKey]);
 
   const handleExcludeToggle = React.useCallback(
     (checked: boolean) => {
-      if (!isPro) {
-        setUpgradeDialogVariant("advancedConfig");
-        setUpgradeDialogOpen(true);
-        return;
-      }
       if (checked && includeActiveAppOnly) {
         setToggleConflictTarget("exclude");
         return;
       }
       setExcludeActiveApp(checked);
     },
-    [
-      includeActiveAppOnly,
-      isPro,
-      setUpgradeDialogOpen,
-      setUpgradeDialogVariant,
-    ],
+    [includeActiveAppOnly],
   );
 
   const handleIncludeToggle = React.useCallback(
     (checked: boolean) => {
-      if (!isPro) {
-        setUpgradeDialogVariant("advancedConfig");
-        setUpgradeDialogOpen(true);
-        return;
-      }
       if (checked && excludeActiveApp) {
         setToggleConflictTarget("include");
         return;
       }
       setIncludeActiveAppOnly(checked);
     },
-    [excludeActiveApp, isPro, setUpgradeDialogOpen, setUpgradeDialogVariant],
+    [excludeActiveApp],
   );
 
   const handleTogglePlatform = React.useCallback(
@@ -1387,23 +1307,12 @@ function HomePage() {
           return previous;
         }
 
-        if (
-          !isPro &&
-          checked &&
-          !target.enabled &&
-          previous.some((platform) => platform.id !== id && platform.enabled)
-        ) {
-          setUpgradeDialogVariant("multiPlatform");
-          setUpgradeDialogOpen(true);
-          return previous;
-        }
-
         return previous.map((platform) =>
           platform.id === id ? { ...platform, enabled: checked } : platform,
         );
       });
     },
-    [isPro, setUpgradeDialogOpen, setUpgradeDialogVariant],
+    [],
   );
 
   const handleTokenTypeChange = React.useCallback(
@@ -1454,9 +1363,6 @@ function HomePage() {
 
   const handleBrowserDelayChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
-      if (!isPro) {
-        return;
-      }
       const rawValue = event.target.value;
       if (rawValue.trim().length === 0) {
         setBrowserDelay(0);
@@ -1469,7 +1375,7 @@ function HomePage() {
       const milliseconds = Math.max(0, Math.round(parsedSeconds * 1000));
       setBrowserDelay(milliseconds);
     },
-    [isPro],
+    [],
   );
 
   const displayedDelaySeconds = React.useMemo(() => {
@@ -1598,7 +1504,10 @@ function HomePage() {
           name: uniqueName,
         };
         const normalized = normalizePlatformForState(platformWithUniqueName);
-        draft = adjustPlatformForTokenType(normalized, normalized.tokenType);
+        draft = adjustPlatformForTokenType(
+          normalized,
+          normalized.tokenType ?? "Any",
+        );
       } else {
         const template = PLATFORM_TEMPLATES.find(
           (item) => item.key === templateKey,
@@ -1623,7 +1532,10 @@ function HomePage() {
           name: uniqueName,
         };
         const normalized = normalizePlatformForState(platformWithUniqueName);
-        draft = adjustPlatformForTokenType(normalized, normalized.tokenType);
+        draft = adjustPlatformForTokenType(
+          normalized,
+          normalized.tokenType ?? "Any",
+        );
       }
 
       if (!draft) {
@@ -1642,7 +1554,7 @@ function HomePage() {
     setEditingPlatformId(platform.id);
     const cloned = clonePlatformConfig(platform);
     setEditingPlatformDraft(
-      adjustPlatformForTokenType(cloned, cloned.tokenType),
+      adjustPlatformForTokenType(cloned, cloned.tokenType ?? "Any"),
     );
   }, []);
 
@@ -1676,15 +1588,10 @@ function HomePage() {
     if (!editingPlatformId) {
       return;
     }
-    if (!isPro) {
-      setUpgradeDialogVariant("advancedConfig");
-      setUpgradeDialogOpen(true);
-      return;
-    }
     setEditingPlatformDraft((previous) =>
       previous ? appendPlatformShortcutEntry(previous) : previous,
     );
-  }, [editingPlatformId, isPro, setUpgradeDialogOpen, setUpgradeDialogVariant]);
+  }, [editingPlatformId]);
 
   const handleDialogRemoveTokenShortcut = React.useCallback((index: number) => {
     setEditingPlatformDraft((previous) => {
@@ -1694,35 +1601,6 @@ function HomePage() {
       return removePlatformShortcutEntry(previous, index);
     });
   }, []);
-
-  const handleLicenseHeartbeatDismiss = React.useCallback(() => {
-    setLicenseHeartbeatError(null);
-  }, []);
-
-  const handleRetryLicenseValidation = React.useCallback(async () => {
-    if (!licenseApi?.validate) {
-      return;
-    }
-
-    try {
-      const result = await licenseApi.validate();
-      if (result.success) {
-        setLicenseHeartbeatError(null);
-      } else {
-        setLicenseHeartbeatError({
-          code: result.code ?? "validation_failed",
-          message:
-            result.message ?? t("home.licenseErrorDialog.genericMessage"),
-        });
-      }
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : t("home.licenseErrorDialog.genericMessage");
-      setLicenseHeartbeatError({ code: "network_error", message });
-    }
-  }, [licenseApi, t]);
 
   const handleShortcutKeyDown = React.useCallback(
     (
@@ -1817,16 +1695,12 @@ function HomePage() {
         );
       }
       const uniqueName = ensureUniquePlatformName(nextPlatform.name, previous);
-      const enabledCount = previous.filter(
-        (platform) => platform.enabled,
-      ).length;
-      const canEnableMore = isPro || enabledCount === 0;
       return [
         ...previous,
         {
           ...nextPlatform,
           name: uniqueName,
-          enabled: canEnableMore ? true : nextPlatform.enabled,
+          enabled: true,
         },
       ];
     });
@@ -1836,7 +1710,6 @@ function HomePage() {
     editingPlatformId,
     ensureUniquePlatformName,
     handleDialogClose,
-    isPro,
   ]);
 
   const statusContent = {
@@ -1869,38 +1742,6 @@ function HomePage() {
         </div>
       )}
       <Dialog
-        open={Boolean(licenseHeartbeatError)}
-        onOpenChange={(open) => {
-          if (!open) {
-            handleLicenseHeartbeatDismiss();
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("home.licenseErrorDialog.title")}</DialogTitle>
-            <DialogDescription>
-              {t("home.licenseErrorDialog.description")}
-            </DialogDescription>
-          </DialogHeader>
-          {licenseHeartbeatError?.message ? (
-            <p className="text-destructive text-sm">
-              {licenseHeartbeatError.message}
-            </p>
-          ) : null}
-          <DialogFooter className="sm:flex-row sm:justify-end sm:gap-2">
-            <Button variant="outline" onClick={handleLicenseHeartbeatDismiss}>
-              {t("home.licenseErrorDialog.dismiss")}
-            </Button>
-            {licenseApi?.validate ? (
-              <Button onClick={handleRetryLicenseValidation}>
-                {t("home.licenseErrorDialog.retry")}
-              </Button>
-            ) : null}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog
         open={toggleConflictTarget !== null}
         onOpenChange={(open) => {
           if (!open) {
@@ -1931,28 +1772,6 @@ function HomePage() {
             </Button>
             <Button type="button" onClick={handleToggleConflictConfirm}>
               {t("home.applicationFiltersConflictConfirm")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={upgradeDialogOpen} onOpenChange={setUpgradeDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {t(`home.upgradeDialog.${upgradeDialogVariant}.title`)}
-            </DialogTitle>
-            <DialogDescription>
-              {t(`home.upgradeDialog.${upgradeDialogVariant}.description`)}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="sm:flex-row sm:justify-end sm:gap-2">
-            <DialogClose asChild>
-              <Button variant="outline">{t("buttons.cancel")}</Button>
-            </DialogClose>
-            <Button asChild>
-              <Link to="/upgrade" onClick={() => setUpgradeDialogOpen(false)}>
-                {t("buttons.upgrade")}
-              </Link>
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2105,7 +1924,7 @@ function HomePage() {
                   {dialogPlatform.urls.map((entry, entryIndex) => {
                     const chainLabel = getChainDisplayLabel(
                       entry.chain,
-                      dialogPlatform.tokenType,
+                      dialogPlatform.tokenType ?? "Any",
                     );
                     return (
                       <InputGroup key={`${dialogPlatformId}-${entryIndex}`}>
@@ -2218,18 +2037,6 @@ function HomePage() {
             <div className="flex items-center gap-2 self-end sm:self-auto">
               <LangToggle />
               <ToggleTheme />
-              <Button asChild variant="default" className="gap-2">
-                <Link to="/upgrade" className="flex items-center gap-2">
-                  {isPro ? (
-                    <>
-                      <BadgeCheck className="size-4" />
-                      <span>{proButtonLabel}</span>
-                    </>
-                  ) : (
-                    t("buttons.upgrade")
-                  )}
-                </Link>
-              </Button>
             </div>
           </header>
 
@@ -2273,53 +2080,15 @@ function HomePage() {
                 ) : (
                   platforms.map((platform) => {
                     const shortcuts = platform.shortcuts ?? [];
-                    const primaryTokenValue =
-                      shortcuts.length > 0
-                        ? (canonicalizeTokenType(shortcuts[0].tokenType) ??
-                          shortcuts[0].tokenType ??
-                          "Any")
-                        : (canonicalizeTokenType(platform.tokenType) ??
-                          platform.tokenType ??
-                          "Any");
-                    const activeTokenSet = new Set<string>();
-                    const registerTokens = (spec?: string) => {
-                      parseChainSpec(spec ?? "")
-                        .map((token) => normalizeChainTokenKey(token))
-                        .filter(Boolean)
-                        .forEach((token) => activeTokenSet.add(token));
-                    };
-                    shortcuts.forEach((shortcutEntry) =>
-                      registerTokens(shortcutEntry.tokenType),
-                    );
-                    registerTokens(primaryTokenValue);
-                    registerTokens(platform.tokenType);
-                    if (activeTokenSet.size === 0) {
-                      platform.urls.forEach((entry) =>
-                        registerTokens(entry.chain),
-                      );
-                    }
-                    const showAllUrls =
-                      activeTokenSet.size === 0 || activeTokenSet.has("any");
-                    const visibleUrls = platform.urls.filter((entry) => {
-                      const entryTokens = parseChainSpec(entry.chain);
-                      const entryKeys = entryTokens.map((token) =>
-                        normalizeChainTokenKey(token),
-                      );
-                      if (entryKeys.length === 0 || entryKeys.includes("any")) {
-                        return true;
-                      }
-                      if (showAllUrls) {
-                        return true;
-                      }
-                      return entryKeys.some((tokenKey) =>
-                        activeTokenSet.has(tokenKey),
-                      );
-                    });
 
                     return (
                       <div
                         key={platform.id}
-                        className="border-border/60 bg-muted/40 hover:bg-muted/60 flex flex-col gap-4 rounded-xl border p-4 transition"
+                        className={`border-border/60 flex flex-col gap-4 rounded-xl border p-4 transition-all ${
+                          platform.enabled
+                            ? "bg-muted/40 hover:bg-muted/60"
+                            : "bg-muted/20 opacity-60 grayscale-[0.15] hover:opacity-75"
+                        }`}
                       >
                         <div className="flex flex-row items-center justify-between gap-4">
                           <div className="space-y-1">
@@ -2441,23 +2210,6 @@ function HomePage() {
                             );
                           })}
                         </div>
-                        <div className="text-muted-foreground flex flex-col gap-1 text-xs">
-                          {visibleUrls.map((entry, entryIndex) => {
-                            const chainLabel = getChainDisplayLabel(
-                              entry.chain,
-                              primaryTokenValue,
-                            );
-                            return (
-                              <span
-                                key={`${platform.id}-${entryIndex}`}
-                                className="font-mono"
-                              >
-                                {chainLabel ? `[${chainLabel}] ` : ""}
-                                {entry.url}
-                              </span>
-                            );
-                          })}
-                        </div>
                       </div>
                     );
                   })
@@ -2475,14 +2227,9 @@ function HomePage() {
                 <CardContent className="space-y-8">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
                     <div className="space-y-1 sm:w-1/2">
-                      <div className="flex items-center gap-2">
-                        <p className="text-primary text-sm font-semibold">
-                          {t("home.browserDelayTitle")}
-                        </p>
-                        <span className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase">
-                          Pro
-                        </span>
-                      </div>
+                      <p className="text-primary text-sm font-semibold">
+                        {t("home.browserDelayTitle")}
+                      </p>
                       <p className="text-muted-foreground text-xs">
                         {t("home.browserDelayDescription")}
                       </p>
@@ -2495,17 +2242,11 @@ function HomePage() {
                           step={0.1}
                           value={displayedDelaySeconds}
                           onChange={handleBrowserDelayChange}
-                          disabled={!isPro}
                           className="text-left"
                           aria-label={t("home.browserDelayTitle")}
                         />
                         <InputGroupAddon align="inline-end">s</InputGroupAddon>
                       </InputGroup>
-                      {!isPro ? (
-                        <Badge variant="secondary" className="py-1">
-                          {t("home.delayBadge")}
-                        </Badge>
-                      ) : null}
                     </div>
                   </div>
 
@@ -2535,19 +2276,14 @@ function HomePage() {
 
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
                     <div className="space-y-1 sm:w-1/2">
-                      <div className="flex items-center gap-2">
-                        <p className="text-primary text-sm font-semibold">
-                          {t("home.smartChainCorrectionTitle")}
-                        </p>
-                        <span className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase">
-                          Pro
-                        </span>
-                      </div>
+                      <p className="text-primary text-sm font-semibold">
+                        {t("home.smartChainCorrectionTitle")}
+                      </p>
                       <p className="text-muted-foreground text-xs">
                         {t("home.smartChainCorrectionDescription")}
                       </p>
                     </div>
-                    <div className="sm:w-1/2">
+                    <div className="space-y-3 sm:w-1/2">
                       <div className="border-border/60 bg-background/70 flex items-center justify-between rounded-lg border p-3">
                         <p className="text-sm font-medium">
                           {t("home.smartChainCorrectionToggleLabel")}
@@ -2555,22 +2291,110 @@ function HomePage() {
                         <Switch
                           checked={smartChainCorrectionEnabled}
                           onCheckedChange={handleSmartChainCorrectionToggle}
-                          disabled={!isPro}
                         />
                       </div>
+                      {smartCorrectionEditing ? (
+                        <div className="border-border/60 bg-background/70 space-y-3 rounded-lg border p-3">
+                          <div className="space-y-2">
+                            <Label htmlFor="alchemy-api-key">
+                              {t("home.alchemyApiKeyLabel")}
+                            </Label>
+                            <div className="flex gap-2">
+                              <Input
+                                id="alchemy-api-key"
+                                type="password"
+                                value={alchemyApiKeyDraft}
+                                onChange={(event) => {
+                                  setAlchemyApiKeyDraft(event.target.value);
+                                  setRpcKeyTest({ status: "idle" });
+                                }}
+                                placeholder={t("home.alchemyApiKeyPlaceholder")}
+                                autoComplete="off"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={handleTestAlchemyApiKey}
+                                disabled={
+                                  !alchemyApiKeyDraft.trim() ||
+                                  rpcKeyTest.status === "testing"
+                                }
+                              >
+                                {rpcKeyTest.status === "testing" ? (
+                                  <Loader2 className="size-4 animate-spin" />
+                                ) : null}
+                                {t("home.alchemyApiKeyTest")}
+                              </Button>
+                            </div>
+                          </div>
+                          {rpcKeyTest.status === "success" ? (
+                            <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
+                              <CheckCircle2 className="size-4" />
+                              <span>
+                                {t("home.alchemyApiKeyTestSuccess", {
+                                  latency: rpcKeyTest.latencyMs,
+                                })}
+                              </span>
+                            </div>
+                          ) : null}
+                          {rpcKeyTest.status === "failed" ? (
+                            <div className="text-destructive flex items-center gap-2 text-xs">
+                              <AlertCircle className="size-4" />
+                              <span>
+                                {t(
+                                  `home.alchemyApiKeyTestError.${rpcKeyTest.reason ?? "unreachable"}`,
+                                )}
+                              </span>
+                            </div>
+                          ) : null}
+                          <p className="text-muted-foreground text-xs">
+                            {t("home.alchemyApiKeyDescription")}
+                          </p>
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={handleCancelSmartCorrectionEdit}
+                            >
+                              {t("home.alchemyApiKeyCancel")}
+                            </Button>
+                            <Button
+                              type="button"
+                              onClick={handleConfirmSmartCorrection}
+                              disabled={rpcKeyTest.status !== "success"}
+                            >
+                              {t("home.alchemyApiKeyConfirm")}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : smartChainCorrectionEnabled && alchemyApiKey ? (
+                        <div className="border-border/60 bg-background/70 flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="text-muted-foreground text-xs">
+                              {t("home.alchemyApiKeyConfigured")}
+                            </p>
+                            <p className="truncate font-mono text-sm">
+                              {maskApiKey(alchemyApiKey)}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleEditSmartCorrectionKey}
+                          >
+                            {t("home.alchemyApiKeyModify")}
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
                     <div className="space-y-1 sm:w-1/2">
-                      <div className="flex items-center gap-2">
-                        <p className="text-primary text-sm font-semibold">
-                          {t("home.excludedAppsTitle")}
-                        </p>
-                        <span className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase">
-                          Pro
-                        </span>
-                      </div>
+                      <p className="text-primary text-sm font-semibold">
+                        {t("home.excludedAppsTitle")}
+                      </p>
                       <p className="text-muted-foreground text-xs">
                         {t("home.excludedAppsDescription")}
                       </p>
@@ -2590,7 +2414,6 @@ function HomePage() {
                         <Switch
                           checked={excludeActiveApp}
                           onCheckedChange={handleExcludeToggle}
-                          disabled={!isPro}
                         />
                       </div>
                       {excludeActiveApp ? (
@@ -2650,14 +2473,9 @@ function HomePage() {
 
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
                     <div className="space-y-1 sm:w-1/2">
-                      <div className="flex items-center gap-2">
-                        <p className="text-primary text-sm font-semibold">
-                          {t("home.includedAppsTitle")}
-                        </p>
-                        <span className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase">
-                          Pro
-                        </span>
-                      </div>
+                      <p className="text-primary text-sm font-semibold">
+                        {t("home.includedAppsTitle")}
+                      </p>
                       <p className="text-muted-foreground text-xs">
                         {t("home.includedAppsDescription")}
                       </p>
@@ -2677,7 +2495,6 @@ function HomePage() {
                         <Switch
                           checked={includeActiveAppOnly}
                           onCheckedChange={handleIncludeToggle}
-                          disabled={!isPro}
                         />
                       </div>
                       {includeActiveAppOnly ? (

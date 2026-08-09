@@ -20,11 +20,6 @@ export default function NavigationMenu() {
             <Link to="/">{t("titleHomePage")}</Link>
           </NavigationMenuLink>
         </NavigationMenuItem>
-        <NavigationMenuItem>
-          <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
-            <Link to="/upgrade">{t("titleSecondPage")}</Link>
-          </NavigationMenuLink>
-        </NavigationMenuItem>
       </NavigationMenuList>
     </NavigationMenuBase>
   );

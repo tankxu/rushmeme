@@ -7,24 +7,18 @@ import type {
   PlatformShortcutConfig,
   RuntimeConfig,
 } from "@/types/config";
-import { createDefaultAppConfig, instantiateDefaultPlatforms } from "@/config/default-config";
-import { PLATFORM_TEMPLATES, DEFAULT_BROWSER_DELAY } from "@/config/platform-templates";
+import {
+  createDefaultAppConfig,
+  instantiateDefaultPlatforms,
+} from "@/config/default-config";
+import { PLATFORM_TEMPLATES } from "@/config/platform-templates";
 import { convertDisplayShortcutToAccelerator } from "@/utils/shortcut";
 import { extractChainSpecFromUrl, normalizeUrlTemplates } from "@/utils/chain";
-import { isProLicensed } from "@/helpers/ipc/license/pro-status";
-import {
-  getLicenseSnapshot,
-  updateLicenseSnapshot,
-  patchLicenseSnapshot,
-} from "@/helpers/ipc/license/license-store";
-
-type StoredAppConfig = Omit<AppConfig, "license">;
+type StoredAppConfig = AppConfig;
 
 function createDefaultStoredConfig(): StoredAppConfig {
   const defaults = createDefaultAppConfig();
-  const serialized = serializeAppConfigForStore(defaults);
-  serialized.smartChainCorrectionEnabled = true;
-  return serialized;
+  return serializeAppConfigForStore(defaults);
 }
 
 const store = new Store<StoredAppConfig>({
@@ -99,13 +93,16 @@ function serializePlatformForStore(platform: PlatformConfig): PlatformConfig {
 function serializeAppConfigForStore(
   config: AppConfig | StoredAppConfig,
 ): StoredAppConfig {
+  const alchemyApiKey =
+    typeof config.alchemyApiKey === "string" ? config.alchemyApiKey.trim() : "";
+
   return {
     platforms: config.platforms.map(serializePlatformForStore),
     notifications: config.notifications,
-    smartChainCorrectionEnabled: Boolean(
-      (config as AppConfig).smartChainCorrectionEnabled,
-    ),
-    browserDelayMs: 0,
+    smartChainCorrectionEnabled:
+      Boolean(config.smartChainCorrectionEnabled) && Boolean(alchemyApiKey),
+    alchemyApiKey,
+    browserDelayMs: sanitizeBrowserDelay(config.browserDelayMs, 0),
     excludeActiveApp:
       typeof config.excludeActiveApp === "boolean"
         ? config.excludeActiveApp
@@ -131,30 +128,10 @@ function clonePlatformConfig(platform: PlatformConfig): PlatformConfig {
   };
 }
 
-function cloneStoredConfig(config: StoredAppConfig): StoredAppConfig {
-  return {
-    browserDelayMs: config.browserDelayMs,
-    notifications: { ...config.notifications },
-    platforms: config.platforms.map(clonePlatformConfig),
-    smartChainCorrectionEnabled: Boolean(config.smartChainCorrectionEnabled),
-    excludeActiveApp:
-      typeof config.excludeActiveApp === "boolean"
-        ? config.excludeActiveApp
-        : true,
-    includeActiveAppOnly:
-      typeof config.includeActiveAppOnly === "boolean"
-        ? config.includeActiveAppOnly
-        : false,
-    excludedApps: Array.isArray(config.excludedApps)
-      ? [...config.excludedApps]
-      : [],
-    includedApps: Array.isArray(config.includedApps)
-      ? [...config.includedApps]
-      : [],
-  };
-}
-
-function ensurePlatformId(platform: PlatformConfig, index: number): PlatformConfig {
+function ensurePlatformId(
+  platform: PlatformConfig,
+  index: number,
+): PlatformConfig {
   if (platform.id) {
     return platform;
   }
@@ -176,18 +153,18 @@ function ensurePlatformDefaults(
   const sourceUrls =
     platform.urls?.length && platform.urls.length > 0
       ? platform.urls
-      : template?.urls ?? [];
+      : (template?.urls ?? []);
   const fallbackChain = primaryShortcut.tokenType ?? "";
-  const urls = normalizeUrlTemplates(sourceUrls, fallbackChain).map((entry) => ({
-    ...entry,
-    chain: extractChainSpecFromUrl(entry.url, entry.chain ?? fallbackChain),
-  }));
+  const urls = normalizeUrlTemplates(sourceUrls, fallbackChain).map(
+    (entry) => ({
+      ...entry,
+      chain: extractChainSpecFromUrl(entry.url, entry.chain ?? fallbackChain),
+    }),
+  );
 
   return {
     ...platform,
-    requiresPro: platform.requiresPro ?? template?.requiresPro,
-    variableType:
-      platform.variableType ?? template?.variableType ?? "CA",
+    variableType: platform.variableType ?? template?.variableType ?? "CA",
     tokenType: primaryShortcut.tokenType,
     shortcut: primaryShortcut.shortcut,
     accelerator: primaryShortcut.accelerator,
@@ -276,6 +253,7 @@ type ExtendedConfigLike = Pick<
   | "notifications"
   | "browserDelayMs"
   | "smartChainCorrectionEnabled"
+  | "alchemyApiKey"
   | "excludedApps"
   | "excludeActiveApp"
   | "includedApps"
@@ -288,9 +266,8 @@ function normalizeStoredConfig(config: ExtendedConfigLike): StoredAppConfig {
     PLATFORM_TEMPLATES.map((template) => [template.key, template]),
   );
 
-  const platformsList = (config.platforms?.length
-    ? config.platforms
-    : instantiateDefaultPlatforms()
+  const platformsList = (
+    config.platforms?.length ? config.platforms : instantiateDefaultPlatforms()
   ).map((platform, index) =>
     ensurePlatformDefaults(
       ensurePlatformId(platform, index),
@@ -310,17 +287,26 @@ function normalizeStoredConfig(config: ExtendedConfigLike): StoredAppConfig {
     (config as unknown as { notifications?: unknown }).notifications,
     defaults.notifications,
   );
+  const alchemyApiKey =
+    typeof (config as { alchemyApiKey?: unknown }).alchemyApiKey === "string"
+      ? (config as { alchemyApiKey: string }).alchemyApiKey.trim()
+      : "";
+  const requestedSmartCorrection =
+    typeof (config as { smartChainCorrectionEnabled?: unknown })
+      .smartChainCorrectionEnabled === "boolean"
+      ? Boolean(
+          (config as { smartChainCorrectionEnabled?: boolean })
+            .smartChainCorrectionEnabled,
+        )
+      : defaults.smartChainCorrectionEnabled;
 
   return {
     browserDelayMs,
     notifications,
     platforms,
     smartChainCorrectionEnabled:
-      typeof (config as { smartChainCorrectionEnabled?: unknown })
-        .smartChainCorrectionEnabled === "boolean"
-        ? ((config as { smartChainCorrectionEnabled?: boolean })
-            .smartChainCorrectionEnabled as boolean)
-        : true,
+      requestedSmartCorrection && Boolean(alchemyApiKey),
+    alchemyApiKey,
     excludeActiveApp: normalizeExcludeActiveApp(
       (config as unknown as { excludeActiveApp?: unknown }).excludeActiveApp,
       defaults.excludeActiveApp,
@@ -341,176 +327,15 @@ function normalizeStoredConfig(config: ExtendedConfigLike): StoredAppConfig {
   };
 }
 
-function applyRuntimeProOverrides(
-  config: StoredAppConfig,
-  proLicensed: boolean,
-): StoredAppConfig {
-  const cloned = cloneStoredConfig(config);
-  if (proLicensed) {
-    return cloned;
-  }
-
-  let hasActivated = false;
-  const limitedPlatforms = cloned.platforms.map((platform) => {
-    const sourceShortcut =
-      platform.shortcuts?.[0] ??
-      ({
-        tokenType: platform.tokenType ?? "",
-        shortcut: platform.shortcut ?? "",
-        accelerator: platform.accelerator,
-      } satisfies PlatformShortcutConfig);
-
-    const primaryShortcut: PlatformShortcutConfig = {
-      tokenType: sourceShortcut.tokenType?.trim() ?? "",
-      shortcut: sourceShortcut.shortcut ?? "",
-      accelerator:
-        sourceShortcut.accelerator ??
-        convertDisplayShortcutToAccelerator(sourceShortcut.shortcut ?? "") ??
-        undefined,
-    };
-
-    const enabled =
-      platform.enabled && !hasActivated ? ((hasActivated = true), true) : false;
-
-    return {
-      ...platform,
-      enabled,
-      variableType: platform.variableType ?? "CA",
-      tokenType: primaryShortcut.tokenType,
-      shortcut: primaryShortcut.shortcut,
-      accelerator: primaryShortcut.accelerator,
-      shortcuts: [primaryShortcut],
-    };
-  });
-
-  return {
-    ...cloned,
-    platforms: limitedPlatforms,
-    browserDelayMs: DEFAULT_BROWSER_DELAY,
-    smartChainCorrectionEnabled: false,
-    excludeActiveApp: false,
-    includeActiveAppOnly: false,
-    excludedApps: [],
-    includedApps: [],
-  };
-}
-
-function mergeProOnlySettings(
-  existing: StoredAppConfig,
-  incoming: StoredAppConfig,
-  proLicensed: boolean,
-): StoredAppConfig {
-  if (proLicensed) {
-    return incoming;
-  }
-
-  const previousById = new Map<string, PlatformConfig>(
-    existing.platforms.map((platform) => [platform.id, platform]),
-  );
-
-  const mergedPlatforms = incoming.platforms.map((platform) => {
-    const previous = previousById.get(platform.id);
-    if (!previous) {
-      return platform;
-    }
-
-    const existingShortcuts =
-      previous.shortcuts?.map((entry) => ({ ...entry })) ?? [];
-    if (existingShortcuts.length === 0) {
-      return platform;
-    }
-
-    const incomingPrimary =
-      platform.shortcuts?.[0] ??
-      ({
-        tokenType: platform.tokenType ?? "",
-        shortcut: platform.shortcut ?? "",
-        accelerator: platform.accelerator,
-      } satisfies PlatformShortcutConfig);
-
-    const nextShortcuts = existingShortcuts.map((entry, index) => {
-      if (index === 0) {
-        return {
-          ...entry,
-          tokenType: incomingPrimary.tokenType,
-          shortcut: incomingPrimary.shortcut,
-          accelerator:
-            incomingPrimary.accelerator ??
-            convertDisplayShortcutToAccelerator(
-              incomingPrimary.shortcut ?? "",
-            ) ??
-            entry.accelerator,
-        };
-      }
-      return entry;
-    });
-
-    const primary = nextShortcuts[0] ?? incomingPrimary;
-
-    return {
-      ...platform,
-      enabled:
-        previous.enabled && !platform.enabled ? previous.enabled : platform.enabled,
-      shortcuts: nextShortcuts,
-      tokenType: primary.tokenType,
-      shortcut: primary.shortcut,
-      accelerator: primary.accelerator,
-    };
-  });
-
-  return {
-    ...incoming,
-    platforms: mergedPlatforms,
-    browserDelayMs: existing.browserDelayMs,
-    smartChainCorrectionEnabled: existing.smartChainCorrectionEnabled,
-    excludeActiveApp: existing.excludeActiveApp,
-    includeActiveAppOnly: existing.includeActiveAppOnly,
-    excludedApps: [...existing.excludedApps],
-    includedApps: [...existing.includedApps],
-  };
-}
-
 export function getConfig(): RuntimeConfig {
   const storedConfig = store.store;
   const normalized = normalizeStoredConfig(storedConfig);
   store.set(serializeAppConfigForStore(normalized));
-  const proLicensed = isProLicensed();
-  const runtimeConfig = applyRuntimeProOverrides(normalized, proLicensed);
-  const license = getLicenseSnapshot();
-  return {
-    ...runtimeConfig,
-    license,
-    isPro: proLicensed,
-  };
+  return normalized;
 }
 
 export function saveConfig(config: AppConfigSavePayload): AppConfig {
-  const proLicensed = isProLicensed();
-  const desiredSmartCorrection =
-    typeof config.smartChainCorrectionEnabled === "boolean"
-      ? proLicensed
-        ? config.smartChainCorrectionEnabled
-        : true
-      : true;
-
-  const preparedConfig =
-    config.smartChainCorrectionEnabled === desiredSmartCorrection
-      ? config
-      : {
-          ...config,
-          smartChainCorrectionEnabled: desiredSmartCorrection,
-        };
-
-  const existing = normalizeStoredConfig(store.store);
-  const normalized = normalizeStoredConfig(preparedConfig);
-  const merged = mergeProOnlySettings(existing, normalized, proLicensed);
-  store.set(serializeAppConfigForStore(merged));
-  const normalizedLicense = getLicenseSnapshot();
-  const runtimeConfig = applyRuntimeProOverrides(merged, proLicensed);
-  return {
-    ...runtimeConfig,
-    license: normalizedLicense,
-  };
+  const normalized = normalizeStoredConfig(config);
+  store.set(serializeAppConfigForStore(normalized));
+  return normalized;
 }
-
-export { getLicenseSnapshot, updateLicenseSnapshot, patchLicenseSnapshot };

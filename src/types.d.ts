@@ -3,16 +3,12 @@
 // whether you're running in development or production).
 import type {
   AppConfigSavePayload,
+  AlchemyApiKeyTestResult,
   ExecutePlatformsRequest,
   ExecutePlatformsResponse,
-  LicenseSnapshot,
   RuntimeConfig,
 } from "@/types/config";
 import type { AppLatestRelease, AppRuntimeInfo } from "@/types/app";
-import type {
-  LicenseActivationSummary,
-  LicenseOperationResult,
-} from "@/helpers/ipc/license/license-service";
 
 export {};
 
@@ -46,6 +42,7 @@ declare global {
   interface RushConfigContext {
     getConfig: () => Promise<RuntimeConfig>;
     saveConfig: (config: AppConfigSavePayload) => Promise<void>;
+    testAlchemyApiKey: (apiKey: string) => Promise<AlchemyApiKeyTestResult>;
     executePlatforms: (
       payload?: ExecutePlatformsRequest,
     ) => Promise<ExecutePlatformsResponse>;
@@ -53,31 +50,9 @@ declare global {
     resumeShortcuts: () => void;
   }
 
-  interface RushLicenseContext {
-    getStatus: () => Promise<LicenseSnapshot>;
-    activate: (key: string) => Promise<LicenseOperationResult>;
-    validate: () => Promise<LicenseOperationResult>;
-    deactivate: () => Promise<LicenseOperationResult>;
-    fetchActivationSummary: () => Promise<{
-      success: boolean;
-      snapshot: LicenseSnapshot;
-      summary: LicenseActivationSummary | null;
-      code?: string;
-      message?: string;
-    }>;
-    watch: (
-      listener: (snapshot: LicenseSnapshot) => void,
-    ) => Promise<() => void>;
-    onHeartbeatError: (
-      listener: (details: { code: string; message: string }) => void,
-    ) => () => void;
-  }
-
   interface RushAppContext {
     getVersion: () => Promise<string>;
-    fetchLatestRelease: (options?: {
-      channel?: string;
-    }) => Promise<
+    fetchLatestRelease: (options?: { channel?: string }) => Promise<
       | {
           ok: true;
           data: AppLatestRelease;
@@ -97,15 +72,6 @@ declare global {
     electronShell: ElectronShellContext;
     rushConfig: RushConfigContext;
     rushLanguage: RushLanguageContext;
-    rushLicense: RushLicenseContext;
-    rushLicenseInitialState: {
-      getSnapshot: () => LicenseSnapshot | null;
-      isPro: () => boolean;
-    };
     rushApp: RushAppContext;
-    rushProRuntime?: {
-      getFlag?: () => boolean | undefined;
-    };
-    __RUSHMEME_RENDERER_PRO__?: boolean;
   }
 }

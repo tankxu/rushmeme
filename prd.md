@@ -34,12 +34,12 @@ RushMeme 是一款面向加密资产交易与投研用户的桌面应用。产�
 - 卡片包含：平台名称、Token 类型选择、快捷键输入、设置入口、启用开关。
 - Token 类型以文本形式展示预设链（如 BSC、Solana、Base、X Layer、EVM、Any）,通常 Solana 可以和其他 EVM 链放一起作为组合选项，例如 BSC|Solana，Base|Solana，XLayer|Solana。
 - 支持平台启用/禁用；禁用状态不会在快捷键触发时打开。
-- 提供 Pro 版本，通过序列号升级为 pro，每个序列号支持 2 个设备
-- 包含一个 Upgrade to pro 的二级页面，在页面中展示价格、权益、购买方式和输入序列号。价格暂定 0.01bnb
+- 所有功能免费开放，不需要账号、付费或序列号
+- 不包含付费、授权或功能分级页面
 
 ### 3.2 平台预设与新增
 
-- 主页包含 platform list、开启浏览器延时（默认1s，pro 直接为0）、通知配置（是否开启）
+- 主页包含 platform list、可配置的浏览器延时和通知配置（是否开启）
 - Platform list 默认提供 Binance Wallet、OKX Wallet、DexScreener、GMGN 等部分平台
 - “Add platform” 按钮与 Platform 标题同行，默认右对齐。
 - 点击 Add platformorm 弹出下拉菜单，展示内置平台模板（Binance Wallet、OKX Wallet、DexScreener、GMGN、Debot、raydium 等完整平台列表）。
@@ -62,7 +62,7 @@ RushMeme 是一款面向加密资产交易与投研用户的桌面应用。产�
 - 默认在前置窗口执行复制指令后再获取剪贴板
 - 提取剪贴板中符合正则规则的合约地址（EVM 地址、Solana 公钥等）。
 - 若剪贴板无有效地址，给出错误提示（弹窗或通知）。
-- 可自定义执行后的延迟时间，默认 300ms，可在 0–1000ms 范围调整。（作为 pro 功能，默认为 1000ms）
+- 可自定义执行后的延迟时间，也可以设为 0 立即打开
 
 ### 3.5 通知与状态反馈
 

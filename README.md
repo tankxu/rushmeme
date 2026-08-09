@@ -1,16 +1,56 @@
 # RushMeme
 
-RushMeme 是一款面向加密资产投研人群的跨平台桌面工具。应用通过全局快捷键捕获当前选中的合约地址，并在一组可自定义的平台中瞬间打开对应页面；窗口关闭后常驻托盘/菜单栏，随时待命。
+RushMeme is a free and open-source desktop tool for crypto research and trading workflows. Select a contract address, press a global shortcut, and open it across your chosen platforms instantly. It stays available from the system tray or menu bar when the main window is closed.
+
+All features are included for everyone: no account, payment, license key, or feature tier is required.
+
+Current version: **v0.2.0**
 
 ![RushMeme Demo](images/demo.gif)
 
-## 核心特性 ✨
+## Features
 
-- **一键多平台联动**：复制合约地址后触发快捷键，即可按配置同时在 Binance、OKX、DexScreener 等站点打开详情页。
-- **丰富的托盘体验**：窗口关闭后驻扎系统托盘/菜单栏，托盘菜单展示启用平台并支持一键执行或快速退出。
-- **多语言与持久化**：内置中英文，语言偏好与平台配置自动保存；跨系统重启仍保持状态。
-- **可配置的模板体系**：内置常用平台模板并支持自定义 URL、链路与快捷键，满足不同投研流程。
-- **兼容 macOS / Windows**：针对不同系统提供菜单栏图标、任务栏行为和托盘体验，保持一致的快捷操作。
+- Open a selected contract address in multiple configured platforms with one shortcut.
+- Run from the system tray or menu bar with per-platform actions.
+- Persist platform settings and language preferences locally.
+- Create custom platforms, URL templates, chain mappings, and shortcuts.
+- Correct EVM chains on-device with your own Alchemy API key.
+- Test an RPC key before enabling smart correction, then keep it hidden behind a masked summary.
+- Filter executions by the active application and configure an optional browser launch delay.
+- Support macOS and Windows.
+
+## What's new in v0.2.0
+
+- Retired the RushMeme licensing and token-detection backend.
+- Made every previously paid feature available to everyone.
+- Moved smart EVM chain correction into the desktop app using direct Alchemy RPC calls.
+- Added RPC key testing and an explicit confirmation step before smart correction is enabled.
+- Simplified platform cards, renamed the visible `Token type` field to `Chain`, and visually muted disabled platforms.
+- Switched update checks to public GitHub Releases.
+
+## Network and privacy
+
+RushMeme has no account, licensing, payment, telemetry, or application backend.
+Normal shortcut execution opens only the platform URLs you configure. Smart chain
+correction is optional: when enabled, the desktop app sends the selected contract
+address directly to supported Alchemy RPC endpoints using the API key you provide.
+The key is stored in the Electron app's local configuration, masked in the interface,
+and never sent to RushMeme. Use a dedicated RPC key and never commit it to source control.
+
+The update checker reads the latest public release from GitHub Releases. Disabling
+smart chain correction leaves platform navigation and update checks as the only
+network activity initiated by RushMeme itself.
+
+## Getting started
+
+```bash
+git clone https://github.com/tankxu/rushmeme.git
+cd rushmeme
+npm install
+npm run start
+```
+
+Run checks with `npm run lint` and `npm run test`. Create platform distributables with `npm run make`.
 
 ## Libs and tools
 
@@ -118,37 +158,6 @@ npm run <script>
 
 > The test scripts involving Playwright require the app be builded before running the tests. So, before run the tests, run the `package`, `make` or `publish` script.
 
-## How to use
-
-1. Clone this repository
-
-```bash
-git clone https://github.com/LuanRoger/electron-shadcn.git
-```
-
-Or use it as a template on GitHub
-
-2. Install dependencies
-
-```bash
-npm install
-```
-
-3. Run the app
-
-```bash
-npm run start
-```
-
-## Used by
-
-- [yaste](https://github.com/LuanRoger/yaste) - yaste (Yet another super ₛᵢₘₚₗₑ text editor) is a text editor, that can be used as an alternative to the native text editor of your SO, maybe.
-- [eletric-drizzle](https://github.com/LuanRoger/electric-drizzle) - shadcn-ui and Drizzle ORM with Electron.
-- [Wordle Game](https://github.com/masonyekta/wordle-game) - A Wordle game which features interactive gameplay, cross-platform compatibility, and integration with a custom Wordle API for word validation and letter correctness.
-- [Mehr 🌟](https://github.com/xmannii/MehrLocalChat) - A modern, elegant local AI chatbot application using Electron, React, shadcn/ui, and Ollama.
-
-> Does you've used this template in your project? Add it here and open a PR.
-
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](https://github.com/LuanRoger/electron-shadcn/blob/main/LICENSE) file for details.
+Released under the [MIT License](LICENSE).

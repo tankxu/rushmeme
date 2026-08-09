@@ -17,7 +17,8 @@ import {
   detectAddressType,
   type AddressType,
 } from "@/utils/chain";
-import { getLicenseApiClient } from "@/helpers/ipc/license/license-client";
+import { isSafeExternalUrl } from "@/utils/external-url";
+import { detectEvmContractChains } from "./rpc-chain-detector";
 import {
   getActiveApplication,
   collectApplicationCandidates,
@@ -355,7 +356,7 @@ type ResolvedPlatformUrl = {
   tokens: string[];
 };
 
-type PendingPlatformUrl = {
+export type PendingPlatformUrl = {
   url: string;
   platform: PlatformConfig;
   address: string;
@@ -410,7 +411,10 @@ function buildPlatformUrls(
       const normalizedTokens = rawTokens
         .map((token) => normalizeChainTokenKey(token))
         .filter(Boolean);
-      if (!formattedUrl) {
+      if (!formattedUrl || !isSafeExternalUrl(formattedUrl)) {
+        console.warn("[rushmeme] ignored unsafe platform URL", {
+          platform: platform.name,
+        });
         return [];
       }
       return [
@@ -424,7 +428,7 @@ function buildPlatformUrls(
     .filter((entry) => typeof entry.url === "string" && entry.url.length > 0);
 }
 
-async function maybeRunSmartChainCorrection(
+export async function maybeRunSmartChainCorrection(
   config: AppConfig,
   context: {
     address: string;
@@ -441,18 +445,8 @@ async function maybeRunSmartChainCorrection(
     return;
   }
 
-  const runtimeFlag = (config as { isPro?: boolean }).isPro;
-  if (runtimeFlag === false) {
-    return;
-  }
-
-  const licenseSnapshot = config.license;
-  if (!licenseSnapshot || licenseSnapshot.status !== "active") {
-    return;
-  }
-
-  const licenseKey = licenseSnapshot.key?.trim();
-  if (!licenseKey) {
+  const rpcKey = config.alchemyApiKey?.trim();
+  if (!rpcKey) {
     return;
   }
 
@@ -468,35 +462,25 @@ async function maybeRunSmartChainCorrection(
     return;
   }
 
-  const targetAddressType =
-    relevantUrls[0]?.addressType ?? context.addressType;
+  const targetAddressType = relevantUrls[0]?.addressType ?? context.addressType;
 
   try {
-    const client = getLicenseApiClient();
-    const result = await client.fetchTokenChains(licenseKey, keyword);
-
-    if (!result.ok) {
-      if (result.status === 429) {
-        console.info(
-          "[rushmeme] smart chain correction skipped: token lookup rate limited",
-        );
-      } else {
-        console.warn("[rushmeme] smart chain correction lookup failed", {
-          status: result.status,
-          code: result.code,
-          message: result.message,
-        });
-      }
-      return;
-    }
-
-    const chains = Array.isArray(result.data.chains)
-      ? result.data.chains
-      : [];
-
-    const normalizedChains = chains
-      .map((chain) => normalizeChainTokenKey(chain))
-      .filter(Boolean);
+    const candidateTokens = Array.from(
+      new Set(
+        relevantUrls.flatMap((pending) =>
+          pending.platform.urls.flatMap((entry) =>
+            parseChainSpec(entry.chain)
+              .map((token) => normalizeChainTokenKey(token))
+              .filter(Boolean),
+          ),
+        ),
+      ),
+    );
+    const normalizedChains = await detectEvmContractChains({
+      apiKey: rpcKey,
+      address: keyword,
+      candidateTokens,
+    });
 
     if (normalizedChains.length === 0) {
       return;
@@ -563,7 +547,7 @@ async function maybeRunSmartChainCorrection(
             ? resolvedUrl.replace("{ANY}", encodeURIComponent(context.address))
             : resolvedUrl.replace("{CA}", encodeURIComponent(context.address));
 
-        if (!finalUrl) {
+        if (!finalUrl || !isSafeExternalUrl(finalUrl)) {
           continue;
         }
 
@@ -599,7 +583,7 @@ async function maybeRunSmartChainCorrection(
 
     if (!targetToken) {
       if (config.notifications.enabled) {
-        const fallbackChain = chains[0] ?? "unknown";
+        const fallbackChain = normalizedChains[0] ?? "unknown";
         showNotification({
           title: "Smart chain correction",
           body: `Detected ${fallbackChain.toUpperCase()} but no matching destination is configured.`,
@@ -609,7 +593,7 @@ async function maybeRunSmartChainCorrection(
       console.info(
         "[rushmeme] smart chain correction: no configured destination for detected chains",
         {
-          chains,
+          chains: normalizedChains,
           openedTokens: Array.from(openedTokens),
         },
       );
@@ -617,7 +601,7 @@ async function maybeRunSmartChainCorrection(
     }
 
     const displayChain =
-      chains.find(
+      normalizedChains.find(
         (chain) => normalizeChainTokenKey(chain) === targetToken,
       ) ?? targetToken;
 
@@ -688,10 +672,23 @@ export async function executePlatforms(
     : [];
   const includeActiveAppOnly = config.includeActiveAppOnly === true;
 
-  const shouldCheckInclude =
+  if (
     !bypassApplicationFilters &&
     includeActiveAppOnly &&
-    includedApps.length > 0;
+    includedApps.length === 0
+  ) {
+    console.log("[rushmeme] execution skipped: allowlist is enabled but empty");
+    return {
+      success: false,
+      opened,
+      error:
+        "Execution skipped because the application allowlist has no entries.",
+      selectionCaptured: false,
+      skippedBecauseExcluded: true,
+    };
+  }
+
+  const shouldCheckInclude = !bypassApplicationFilters && includeActiveAppOnly;
   const shouldCheckExclude =
     !bypassApplicationFilters && excludeActiveApp && excludedApps.length > 0;
 
@@ -701,10 +698,7 @@ export async function executePlatforms(
       activeApp = await getActiveApplication();
       console.log("[rushmeme] active application info", { activeApp });
     } catch (error) {
-      console.warn(
-        "[rushmeme] failed to resolve active application:",
-        error,
-      );
+      console.warn("[rushmeme] failed to resolve active application:", error);
     }
   }
 
@@ -765,10 +759,6 @@ export async function executePlatforms(
         };
       }
     }
-  } else if (!bypassApplicationFilters && includeActiveAppOnly) {
-    console.log(
-      "[rushmeme] allowlist enabled but no applications configured; check skipped",
-    );
   }
 
   if (shouldCheckExclude) {
@@ -793,8 +783,7 @@ export async function executePlatforms(
       return {
         success: false,
         opened,
-        error:
-          "Execution skipped because the active application is excluded.",
+        error: "Execution skipped because the active application is excluded.",
         selectionCaptured: false,
         skippedBecauseExcluded: true,
       };
@@ -829,11 +818,7 @@ export async function executePlatforms(
     }
   }
 
-  if (
-    !bypassApplicationFilters &&
-    !excludeActiveApp &&
-    !includeActiveAppOnly
-  ) {
+  if (!bypassApplicationFilters && !excludeActiveApp && !includeActiveAppOnly) {
     console.log("[rushmeme] excluded applications disabled");
   }
 
@@ -844,7 +829,11 @@ export async function executePlatforms(
   let originalClipboardValue: string | null = null;
   const restoreClipboardIfNeeded = () => {
     if (selectionCaptured && typeof originalClipboardValue === "string") {
-      clipboard.writeText(originalClipboardValue);
+      try {
+        clipboard.writeText(originalClipboardValue);
+      } catch (error) {
+        console.warn("[rushmeme] failed to restore clipboard:", error);
+      }
     }
   };
 
@@ -968,7 +957,8 @@ export async function executePlatforms(
     }
     restoreClipboardIfNeeded();
     const firstAddress =
-      detectedAddresses[0]?.address ?? (anyPlatforms.length > 0 ? rawInput : undefined);
+      detectedAddresses[0]?.address ??
+      (anyPlatforms.length > 0 ? rawInput : undefined);
     return {
       success: false,
       opened,
@@ -1009,14 +999,49 @@ export async function executePlatforms(
     await delay(config.browserDelayMs);
   }
 
-  await Promise.all(
-    urlsToOpen.map(async ({ url }) => {
-      await shell.openExternal(url);
-      opened.push(url);
-    }),
-  );
+  let openResults: PromiseSettledResult<void>[];
+  try {
+    openResults = await Promise.allSettled(
+      urlsToOpen.map(async ({ url }) => {
+        await shell.openExternal(url);
+        opened.push(url);
+      }),
+    );
+  } finally {
+    restoreClipboardIfNeeded();
+  }
 
-  restoreClipboardIfNeeded();
+  const failedOpenCount = openResults.filter(
+    (result) => result.status === "rejected",
+  ).length;
+  if (failedOpenCount > 0) {
+    console.error("[rushmeme] failed to open external destinations", {
+      failed: failedOpenCount,
+      total: urlsToOpen.length,
+    });
+    if (config.notifications.enabled) {
+      showNotification({
+        title: "RushMeme",
+        body:
+          opened.length > 0
+            ? `${failedOpenCount} destination(s) could not be opened.`
+            : "The configured destinations could not be opened.",
+        variant: "warning",
+      });
+    }
+  }
+
+  if (opened.length === 0) {
+    return {
+      success: false,
+      opened,
+      address:
+        detectedAddresses[0]?.address ??
+        (anyPlatforms.length > 0 ? rawInput : undefined),
+      error: "Failed to open the configured destinations.",
+      selectionCaptured,
+    };
+  }
 
   const correctionCandidate =
     detectedAddresses[0] ??
@@ -1037,7 +1062,12 @@ export async function executePlatforms(
     success: opened.length > 0,
     opened,
     address:
-      detectedAddresses[0]?.address ?? (anyPlatforms.length > 0 ? rawInput : undefined),
+      detectedAddresses[0]?.address ??
+      (anyPlatforms.length > 0 ? rawInput : undefined),
     selectionCaptured,
+    error:
+      failedOpenCount > 0
+        ? `${failedOpenCount} destination(s) could not be opened.`
+        : undefined,
   };
 }

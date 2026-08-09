@@ -20,21 +20,13 @@ import { getConfig } from "@/helpers/ipc/config/config-store";
 import type { SupportedLocale } from "@/helpers/ipc/language/language-store";
 import { getPreferredLanguage } from "@/helpers/ipc/language/language-store";
 import { executePlatforms } from "@/helpers/ipc/config/platform-executor";
-import { getLicenseService } from "@/helpers/ipc/license/license-service";
 import { convertDisplayShortcutToAccelerator } from "@/utils/shortcut";
 
 const inDevelopment = process.env.NODE_ENV === "development";
 
-if (process.platform === "darwin") {
-  // Fall back to plaintext cookie storage and bypass Keychain access.
-  app.commandLine.appendSwitch("password-store", "basic");
-  app.commandLine.appendSwitch("use-mock-keychain");
-}
-
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
-const licenseService = getLicenseService();
 
 const TRAY_TRANSLATIONS: Record<
   SupportedLocale,
@@ -405,13 +397,13 @@ function configureApplicationMenu() {
       {
         label: "RushMeme Help",
         click: () => {
-          void shell.openExternal("https://rushmeme.vip/docs");
+          void shell.openExternal("https://github.com/tankxu/rushmeme#readme");
         },
       },
       {
         label: "Support",
         click: () => {
-          void shell.openExternal("https://rushmeme.vip/docs#support");
+          void shell.openExternal("https://github.com/tankxu/rushmeme/issues");
         },
       },
     ],
@@ -526,15 +518,15 @@ async function installExtensions() {
 
 app.on("before-quit", () => {
   isQuitting = true;
-  licenseService.shutdown();
 });
 
 app.whenReady().then(async () => {
   configureApplicationMenu();
   createWindow();
   createTray();
-  void licenseService.initialize();
-  await installExtensions();
+  if (!app.isPackaged) {
+    await installExtensions();
+  }
 });
 
 //osX only
@@ -547,6 +539,8 @@ app.on("window-all-closed", () => {
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
+  } else {
+    showMainWindow();
   }
 });
 //osX only ends

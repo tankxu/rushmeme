@@ -1,5 +1,5 @@
 import { PLATFORM_TEMPLATES } from "./platform-templates";
-import type { AppConfig, LicenseSnapshot, PlatformConfig } from "@/types/config";
+import type { AppConfig, PlatformConfig } from "@/types/config";
 import { convertDisplayShortcutToAccelerator } from "@/utils/shortcut";
 import { extractChainSpecFromUrl, normalizeUrlTemplates } from "@/utils/chain";
 
@@ -18,10 +18,7 @@ function instantiatePlatformTemplate(
   const [primary] = sourceShortcuts;
   const primaryTokenType = primary?.tokenType ?? "Any";
 
-  const normalizedUrls = normalizeUrlTemplates(
-    template.urls,
-    primaryTokenType,
-  );
+  const normalizedUrls = normalizeUrlTemplates(template.urls, primaryTokenType);
 
   const shortcutsWithAccelerators = sourceShortcuts.map((entry) => ({
     ...entry,
@@ -48,7 +45,9 @@ function instantiatePlatformTemplate(
   };
 }
 
-export function instantiateDefaultPlatforms(includeCatalogOnly = false): PlatformConfig[] {
+export function instantiateDefaultPlatforms(
+  includeCatalogOnly = false,
+): PlatformConfig[] {
   const templates = includeCatalogOnly
     ? PLATFORM_TEMPLATES
     : PLATFORM_TEMPLATES.filter((template) => !template.catalogOnly);
@@ -58,27 +57,13 @@ export function instantiateDefaultPlatforms(includeCatalogOnly = false): Platfor
   );
 }
 
-export function createDefaultLicenseSnapshot(): LicenseSnapshot {
-  return {
-    key: null,
-    status: "missing",
-    deviceId: "",
-    deviceName: null,
-    issuedTo: null,
-    expiresAt: null,
-    lastValidatedAt: null,
-    nextCheckInAt: null,
-    remainingActivations: null,
-    lastErrorCode: null,
-    lastErrorMessage: null,
-  };
-}
-
 export function createDefaultAppConfig(): AppConfig {
-  const platforms = instantiateDefaultPlatforms(false).map((platform, index) => ({
-    ...platform,
-    enabled: index === 0 ? true : platform.enabled,
-  }));
+  const platforms = instantiateDefaultPlatforms(false).map(
+    (platform, index) => ({
+      ...platform,
+      enabled: index === 0 ? true : platform.enabled,
+    }),
+  );
 
   return {
     platforms,
@@ -86,11 +71,11 @@ export function createDefaultAppConfig(): AppConfig {
       enabled: true,
     },
     smartChainCorrectionEnabled: false,
+    alchemyApiKey: "",
     browserDelayMs: 0,
     excludeActiveApp: true,
     includeActiveAppOnly: false,
     excludedApps: [],
     includedApps: [],
-    license: createDefaultLicenseSnapshot(),
   };
 }
